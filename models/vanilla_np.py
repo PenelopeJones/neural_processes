@@ -7,21 +7,21 @@ from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 
 from models.networks import VanillaNN, BayesianVanillaNN
-from utils.data_utils import metrics_calculator
+from utils.data_utils import metrics_calculator, to_natural_params, from_natural_params
 
 import pdb
 
 
-class CNP():
+class VanillaNP():
     """
-    The Conditional Neural Process model.
+    The original Neural Process model.
     """
 
     def __init__(self, x_dim, y_dim, r_dim, encoder_dims, decoder_dims,
                  encoder_non_linearity=F.relu, decoder_non_linearity=F.relu):
         """
 
-        :param x_dim: (int) Dimensionality of x, the input to the CNP
+        :param x_dim: (int) Dimensionality of x, the input to the NP
         :param y_dim: (int) Dimensionality of y, the target.
         :param r_dim: (int) Dimensionality of the deterministic embedding, r.
         :param encoder_dims: (list of ints) Architecture of the encoder network.
@@ -36,10 +36,10 @@ class CNP():
         self.y_dim = y_dim
         self.r_dim = r_dim
 
-        self.encoder = VanillaNN((x_dim + y_dim), r_dim, encoder_dims, encoder_non_linearity)
-        self.decoder = BayesianVanillaNN((x_dim + r_dim), y_dim, decoder_dims, decoder_non_linearity)
+        self.encoder = BayesianVanillaNN((x_dim + y_dim), r_dim, encoder_dims, encoder_non_linearity, min_var=0.001)
+        self.decoder = BayesianVanillaNN((x_dim + r_dim), y_dim, decoder_dims, decoder_non_linearity, min_var=0.001)
 
-    def forward(self, x_context, y_context, x_target, batch_size):
+    def forward(self, x_context, y_context, x_target, nz_samples, ny_samples, batch_size):
         """
 
         :param x_context: (torch tensor of dimensions [batch_size*n_context, x_dim])
@@ -54,19 +54,39 @@ class CNP():
 
         n_target = int(x_target.shape[0] / batch_size)
 
-        r = self.encoder.forward(torch.cat((x_context, y_context), dim=-1).float())  # [batch_size*n_context, r_dim]
+        mu_z, var_z = self.encoder.forward(torch.cat((x_context, y_context), dim=-1).float())  # [batch_size*n_context, r_dim]
 
-        r = r.view(batch_size, -1, self.r_dim)  # [batch_size, n_context, r_dim]
-        r = torch.mean(r, dim=1).reshape(-1, self.r_dim)  # [batch_size, r_dim]
+        nu1_z, nu2_z = to_natural_params(mu_z, var_z)  #[batch_size*n_context, r_dim]
+        nu1_z = torch.sum(nu1_z.view(batch_size, -1, self.r_dim), dim=1).reshape(-1, self.r_dim)
+        nu2_z = torch.sum(nu2_z.view(batch_size, -1, self.r_dim), dim=1).reshape(-1, self.r_dim)
 
-        r = torch.repeat_interleave(r, n_target, dim=0)  # [batch_size*n_target, r_dim]
+        mu_z, var_z = from_natural_params(nu1_z, nu2_z)  #[batch_size, r_dim]
 
-        mu_y, var_y = self.decoder.forward(torch.cat((x_target.float(), r), dim=-1))  # [batch_size*n_target, y_dim] x2
+        samples_z = [MultivariateNormal(mu_z, torch.diag_embed(var_z)).rsample() for i in range(nz_samples)]
+        samples_z = torch.stack(samples_z).transpose(1, 0).view(batch_size, -1, 1, self.r_dim) # [batch_size, nz_samples, 1, r_dim]
+
+
+        samples_z = samples_z.repeat(1, 1, n_target, 1)   #[batch_size, nz_samples, n_target, r_dim]
+
+        x_target = x_target.reshape(batch_size, 1, -1, self.x_dim)  #[batch_size, 1, n_target, x_dim]
+        x_target = x_target.repeat(1, nz_samples, 1, 1)  #[batch_size, nz_samples, n_target, x_dim]
+
+        mus_y, vars_y = self.decoder.forward(torch.cat((x_target.float(), samples_z), dim=-1).reshape(-1, self.x_dim +
+                                                                                              self.r_dim))  #[batch_size*nz_samples*n_target, y_dim]
+
+        samples_y = [MultivariateNormal(mus_y, torch.diag_embed(vars_y)).rsample() for i in range(ny_samples)] #[ny_samples, batch_size*nz_samples*n_target*y_dim]
+        samples_y = torch.stack(samples_y).reshape(ny_samples, batch_size, nz_samples, n_target, -1)
+
+        samples_y = samples_y.transpose(1, 0).reshape(batch_size, -1, n_target, self.y_dim)
+
+        mu_y = torch.mean(samples_y, dim=1).reshape(-1, self.y_dim) # [batch_size, n_target, y_dim]
+        var_y = torch.var(samples_y, dim=1).reshape(-1, self.y_dim)
 
         return mu_y, var_y
 
+
     def train(self, x, y, x_test=None, y_test=None, x_scaler=None, y_scaler=None,
-              batch_size=10, lr=0.001, epochs=3000, print_freq=100, VERBOSE=True,
+              nz_samples=1, ny_samples=1, batch_size=10, lr=0.001, epochs=3000, print_freq=100, VERBOSE=False,
               dataname=None):
         """
 
@@ -110,7 +130,7 @@ class CNP():
             y_context = torch.stack(y_context).view(-1, self.y_dim) #[batch_size, n_context, y_dim]
 
             # Make a forward pass through the CNP to obtain a distribution over the target set.
-            mu_y, var_y = self.forward(x_context, y_context, x_target, batch_size) #[batch_size*n_target, y_dim] x2
+            mu_y, var_y = self.forward(x_context, y_context, x_target, nz_samples, ny_samples, batch_size) #[batch_size*n_target, y_dim] x2
 
             log_ps = MultivariateNormal(mu_y, torch.diag_embed(var_y)).log_prob(y_target.float())
 
@@ -122,7 +142,7 @@ class CNP():
                 print('Epoch {:.0f}: Loss = {:.5f}'.format(epoch, loss))
 
                 if VERBOSE:
-                    metrics_calculator(self, 'cnp', x, y, x_test, y_test, dataname, epoch, x_scaler, y_scaler)
+                    metrics_calculator(self, 'vnp', x, y, x_test, y_test, dataname, epoch, x_scaler, y_scaler)
 
             loss.backward()
             self.optimiser.step()

@@ -89,7 +89,7 @@ The GPDataGenerator can be used when we wish to generate functions all sampled f
 """
 class GPDataGenerator():
     def __init__(self, kernel,
-                 likelihood=Gaussian(), noise_scale=0.05):
+                 likelihood=Gaussian(), noise_scale=0.1):
         self.kernel = kernel
         self.likelihood = likelihood
         self.noise_scale = noise_scale

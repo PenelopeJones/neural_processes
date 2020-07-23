@@ -5,6 +5,17 @@ import pdb
 
 from sklearn.metrics import r2_score, mean_squared_error
 
+def to_natural_params(mu, var):
+    nu_1 = mu / var
+    nu_2 = - 1 / (2 * var)
+    return nu_1, nu_2
+
+
+def from_natural_params(nu_1, nu_2):
+    var = (- 1 / (2 * nu_2))
+    mu = var * nu_1
+    return mu, var
+
 
 def nlpd(pred_mean_vec, pred_var_vec, targets):
     """
@@ -64,7 +75,7 @@ def plotter1d(x_train, y_train, x_test, y_test, mu_y, var_y, path_to_save):
     return
 
 
-def metrics_calculator(model, x_trains, y_trains, x_tests, y_tests, dataname, epoch, x_scaler=None, y_scaler=None):
+def metrics_calculator(model, model_name, x_trains, y_trains, x_tests, y_tests, dataname, epoch, x_scaler=None, y_scaler=None):
     directory = 'results/'
 
     n_functions = len(x_trains)
@@ -77,17 +88,21 @@ def metrics_calculator(model, x_trains, y_trains, x_tests, y_tests, dataname, ep
     rmse_test_list = []
     nlpd_test_list = []
 
-    for j in range(0, n_functions, 10):
+    for j in range(0, n_functions, 4):
         x_train = x_trains[j]  # N_train, x_size
         y_train = y_trains[j]
         x_test = x_tests[j]
         y_test = y_tests[j]
 
         # At prediction time the context points comprise the entire training set.
-        mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, batch_size=1) #[n_train, y_size]
-        mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, batch_size=1)  #[n_test, y_size]
-
-
+        if model_name == 'cnp':
+            mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, batch_size=1) #[n_train, y_size]
+            mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, batch_size=1)  #[n_test, y_size]
+        elif model_name == 'vnp':
+            mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, nz_samples=10, ny_samples=50, batch_size=1) #[n_train, y_size]
+            mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, nz_samples=10, ny_samples=50, batch_size=1)  #[n_test, y_size]
+        else:
+            raise Exception('Model name should be cnp or vnp.')
         mu_y_train = mu_y_train.reshape(-1).detach().numpy()
         var_y_train = var_y_train.reshape(-1).detach().numpy()
         mu_y_test = mu_y_test.reshape(-1).detach().numpy()
@@ -112,8 +127,8 @@ def metrics_calculator(model, x_trains, y_trains, x_tests, y_tests, dataname, ep
         nlpd_test_list.append(nlpd(mu_y_test, var_y_test, y_test))
 
 
-        if (j % (n_functions // 5) == 0) and (x_dim == 1):
-            fig_name = dataname + '_f' + str(j) + '_epoch' + str(epoch) + 'cnp.png'
+        if (j % (n_functions // 10) == 0) and (x_dim == 1):
+            fig_name = dataname + '_f' + str(j) + '_epoch' + str(epoch) + model_name + '.png'
 
             if x_scaler is not None:
                 x_train = x_scaler.inverse_transform(x_train.reshape(-1))
@@ -147,3 +162,4 @@ def metrics_calculator(model, x_trains, y_trains, x_tests, y_tests, dataname, ep
                                                    np.std(nlpd_test_list) / np.sqrt(len(nlpd_test_list))))
 
     return
+

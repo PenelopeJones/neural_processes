@@ -52,7 +52,7 @@ class BayesianVanillaNN(nn.Module):
     A `vanilla' NN whose output is the natural parameters of a normal distribution over y (as opposed to a point
     estimate of y).
     """
-    def __init__(self, in_dim, out_dim, hidden_dims, non_linearity=F.relu, initial_sigma=None):
+    def __init__(self, in_dim, out_dim, hidden_dims, non_linearity=F.relu, min_var=0.01, initial_sigma=None):
         """
         :param in_dim: (int) Dimensionality of the input.
         :param out_dim: (int) Dimensionality of the target for which a distribution is being obtained.
@@ -64,7 +64,7 @@ class BayesianVanillaNN(nn.Module):
         super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
-
+        self.min_var = min_var
         self.network = VanillaNN(in_dim, 2*out_dim, hidden_dims, non_linearity)
 
         if initial_sigma is not None:
@@ -83,6 +83,6 @@ class BayesianVanillaNN(nn.Module):
 
         out = self.network(x)
         mu = out[:, :self.out_dim]
-        sigma = 0.01 + 0.99*F.sigmoid(out[:, self.out_dim:])
+        sigma = self.min_var + (1.0-self.min_var)*F.sigmoid(out[:, self.out_dim:])
 
         return mu, sigma
