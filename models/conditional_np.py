@@ -6,8 +6,8 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 
-from models.networks import VanillaNN, BayesianVanillaNN
-from utils.data_utils import metrics_calculator
+from models.networks import VanillaNN, ProbabilisticVanillaNN
+from utils.data_utils import metrics_calculator, batch_sampler
 
 import pdb
 
@@ -37,7 +37,7 @@ class CNP():
         self.r_dim = r_dim
 
         self.encoder = VanillaNN((x_dim + y_dim), r_dim, encoder_dims, encoder_non_linearity)
-        self.decoder = BayesianVanillaNN((x_dim + r_dim), y_dim, decoder_dims, decoder_non_linearity)
+        self.decoder = ProbabilisticVanillaNN((x_dim + r_dim), y_dim, decoder_dims, decoder_non_linearity)
 
     def forward(self, x_context, y_context, x_target, batch_size):
         """
@@ -78,36 +78,11 @@ class CNP():
         """
         self.optimiser = optim.Adam(list(self.encoder.parameters()) + list(self.decoder.parameters()), lr)
 
-        n_functions = len(x)
-
         for epoch in range(epochs):
             self.optimiser.zero_grad()
 
             # Sample the function from the set of functions
-            idx_function = np.random.randint(n_functions)
-            x_train = x[idx_function]
-            y_train = y[idx_function]
-
-            max_target = x_train.shape[0]
-
-            # Sample n_target points from the function, and randomly select n_context points to condition on (these
-            # will be a subset of the target set).
-            num_target = torch.randint(low=4, high=int(max_target), size=(1,))
-            num_context = torch.randint(low=3, high=int(num_target), size=(1,))
-
-            idx = [np.random.permutation(x_train.shape[0])[:num_target] for i in
-                   range(batch_size)]
-            idx_context = [idx[i][:num_context] for i in range(batch_size)]
-
-            x_target = [x_train[idx[i], :] for i in range(batch_size)]
-            y_target = [y_train[idx[i], :] for i in range(batch_size)]
-            x_context = [x_train[idx_context[i], :] for i in range(batch_size)]
-            y_context = [y_train[idx_context[i], :] for i in range(batch_size)]
-
-            x_target = torch.stack(x_target).view(-1, self.x_dim)  #[batch_size*n_target, x_dim]
-            y_target = torch.stack(y_target).view(-1, self.y_dim)  #[batch_size*n_target, y_dim]
-            x_context = torch.stack(x_context).view(-1, self.x_dim) #[batch_size*n_context, x_dim]
-            y_context = torch.stack(y_context).view(-1, self.y_dim) #[batch_size, n_context, y_dim]
+            x_context, y_context, x_target, y_target = batch_sampler(x, y, batch_size)
 
             # Make a forward pass through the CNP to obtain a distribution over the target set.
             mu_y, var_y = self.forward(x_context, y_context, x_target, batch_size) #[batch_size*n_target, y_dim] x2

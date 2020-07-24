@@ -12,15 +12,9 @@ from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
 
 from models.conditional_np import CNP
-
+from utils.data_utils import torch_from_numpy_list
 import pdb
 
-
-def torch_from_numpy_list(x_list):
-    x_torch = []
-    for i in range(len(x_list)):
-        x_torch.append(torch.tensor(x_list[i]))
-    return x_torch
 
 
 

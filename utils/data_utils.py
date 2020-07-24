@@ -1,9 +1,49 @@
 import numpy as np
+import torch
 import scipy
 import matplotlib.pyplot as plt
 import pdb
 
 from sklearn.metrics import r2_score, mean_squared_error
+
+def torch_from_numpy_list(x_list):
+    x_torch = []
+    for i in range(len(x_list)):
+        x_torch.append(torch.tensor(x_list[i]))
+    return x_torch
+
+
+def batch_sampler(x, y, batch_size):
+    n_functions = len(x)
+
+    # Sample the function from the set of functions
+    idx_function = np.random.randint(n_functions)
+    x = x[idx_function]
+    y = y[idx_function]
+
+    max_target = x.shape[0]
+    x_dim = x.shape[1]
+    y_dim = y.shape[1]
+
+    # Sample n_target points from the function, and randomly select n_context points to condition on (these
+    # will be a subset of the target set).
+    n_target = torch.randint(low=4, high=int(max_target), size=(1,))
+    n_context = torch.randint(low=3, high=int(n_target), size=(1,))
+
+    idx = [np.random.permutation(x.shape[0])[:n_target] for i in range(batch_size)]
+    idx_context = [idx[i][:n_context] for i in range(batch_size)]
+
+    x_target = [x[idx[i], :] for i in range(batch_size)]
+    y_target = [y[idx[i], :] for i in range(batch_size)]
+    x_context = [x[idx_context[i], :] for i in range(batch_size)]
+    y_context = [y[idx_context[i], :] for i in range(batch_size)]
+
+    x_target = torch.stack(x_target).view(-1, x_dim)  # [batch_size*n_target, x_dim]
+    y_target = torch.stack(y_target).view(-1, y_dim)  # [batch_size*n_target, y_dim]
+    x_context = torch.stack(x_context).view(-1, x_dim)  # [batch_size*n_context, x_dim]
+    y_context = torch.stack(y_context).view(-1, y_dim)  # [batch_size, n_context, y_dim]
+
+    return x_context, y_context, x_target, y_target
 
 def to_natural_params(mu, var):
     nu_1 = mu / var
@@ -77,6 +117,7 @@ def plotter1d(x_train, y_train, x_test, y_test, mu_y, var_y, path_to_save):
 
 def metrics_calculator(model, model_name, x_trains, y_trains, x_tests, y_tests, dataname, epoch, x_scaler=None, y_scaler=None):
     directory = 'results/'
+    subdirectory = model_name + '/'
 
     n_functions = len(x_trains)
     x_dim = x_trains[0].shape[-1]
@@ -99,8 +140,11 @@ def metrics_calculator(model, model_name, x_trains, y_trains, x_tests, y_tests, 
             mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, batch_size=1) #[n_train, y_size]
             mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, batch_size=1)  #[n_test, y_size]
         elif model_name == 'vnp':
-            mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, nz_samples=10, ny_samples=50, batch_size=1) #[n_train, y_size]
-            mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, nz_samples=10, ny_samples=50, batch_size=1)  #[n_test, y_size]
+            mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, nz_samples=10, ny_samples=100, batch_size=1) #[n_train, y_size]
+            mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, nz_samples=10, ny_samples=100, batch_size=1)  #[n_test, y_size]
+        elif model_name == 'anp':
+            mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, nz_samples=10, ny_samples=100, batch_size=1) #[n_train, y_size]
+            mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, nz_samples=10, ny_samples=100, batch_size=1)  #[n_test, y_size]
         else:
             raise Exception('Model name should be cnp or vnp.')
         mu_y_train = mu_y_train.reshape(-1).detach().numpy()
@@ -137,7 +181,7 @@ def metrics_calculator(model, model_name, x_trains, y_trains, x_tests, y_tests, 
             plotter1d(x_train=x_train, y_train=y_train, x_test=x_test, y_test=y_test,
                       mu_y=np.concatenate((mu_y_train, mu_y_test), axis=0),
                       var_y=np.concatenate((var_y_train, var_y_test), axis=0),
-                      path_to_save=directory+fig_name)
+                      path_to_save=directory+subdirectory+fig_name)
 
     r2_train_list = np.array(r2_train_list)
     rmse_train_list = np.array(rmse_train_list)
