@@ -2,11 +2,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions.multivariate_normal import MultivariateNormal
 
-from models.attention import MultiHeadAttention, dot_product_attention, uniform_attention, laplace_attention
+from models.networks.attention import MultiHeadAttention, dot_product_attention, uniform_attention, laplace_attention
 
-import pdb
 
 # BASIC NETWORKS
 

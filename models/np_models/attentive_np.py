@@ -1,16 +1,11 @@
-import numpy as np
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.distributions.kl import kl_divergence
-from sklearn.metrics import mean_squared_error, r2_score
-import matplotlib.pyplot as plt
 
-from models.networks import AttentiveProbabilisticEncoder, AttentiveDeterministicEncoder, ProbabilisticVanillaNN
-from utils.data_utils import metrics_calculator, batch_sampler, to_natural_params, from_natural_params
-
-import pdb
+from models.networks.networks import AttentiveProbabilisticEncoder, AttentiveDeterministicEncoder, ProbabilisticVanillaNN
+from utils.data_utils import metrics_calculator, batch_sampler
 
 
 class AttentiveNP():
@@ -127,6 +122,7 @@ class AttentiveNP():
 
             # Measure the log probability of observing y_target given mu_y, var_y.
             log_ps = MultivariateNormal(mu_y, torch.diag_embed(var_y)).log_prob(y_target.float())
+            log_ps = log_ps.reshape(batch_size, -1).sum(dim=-1)
             log_ps = torch.mean(log_ps)
 
             # Compute the KL divergence between prior and posterior over z

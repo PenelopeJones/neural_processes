@@ -98,8 +98,8 @@ class GPDataGenerator():
         # [num_context]
         x_train = np.random.uniform(x_min, x_max, size=(train_size))
         x_test = np.random.uniform(x_min - 1, x_max + 1, size=(test_size))
-
         x = np.concatenate((x_train, x_test))
+
         x = np.expand_dims(x, 1)  # [train_size + test_size, 1]
 
         knn = self.kernel(x)  # [batch_size, train_size, train_size]
@@ -115,5 +115,4 @@ class GPDataGenerator():
         y_train = y[:train_size, :]
         x_test = x[train_size:, :]
         y_test = y[train_size:, :]
-
         return x_train, y_train, x_test, y_test

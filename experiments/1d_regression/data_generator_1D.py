@@ -7,7 +7,7 @@ sys.path.insert(1, '/Users/penelopejones/PycharmProjects/~ml_physics/neural_proc
 import numpy as np
 import matplotlib.pyplot as plt
 
-from gpflow.kernels import SquaredExponential
+from gpflow.kernels import SquaredExponential, Matern32, Matern52
 
 from utils.gp_sampler import GPDataGenerator
 
@@ -15,11 +15,12 @@ import pdb
 
 def main():
 
-    dataname = "1DGP_2SE_"
-    ptr = "data/toy_data/"
+    dataname = "1DGP_MaternCombo1"
+    ptr = "data/toy_data/" + dataname + '/'
     n_functions = 1000
     lengthscales = 1.0
-    data_generator = GPDataGenerator(kernel=SquaredExponential(lengthscales=lengthscales))
+    kernel = Matern52(variance=1.0, lengthscales=2.0) + Matern32(variance=2.0, lengthscales=1.0)
+    data_generator = GPDataGenerator(kernel=kernel)
 
     x_trains = []
     y_trains = []
@@ -29,13 +30,16 @@ def main():
     #Generate n_functions sets of values of x in the range [min_x, max_x], to be used for training and testing
     plt.figure()
     for i in range(n_functions):
-        n_train = np.random.randint(low = 25, high = 100)
-        n_test = int(0.2*n_train)
-        print(n_train)
-        print(n_test)
+        if i % (n_functions // 5) == 0:
+            n_train = np.random.randint(low=5, high=10)
+            n_test = 20
 
-        x_train, y_train, x_test, y_test = data_generator.sample(train_size=n_train, test_size=n_test, x_min=-3, x_max=3)
+        else:
+            n_train = np.random.randint(low=25, high=100)
+            n_test = int(0.2*n_train)
 
+        x_train, y_train, x_test, y_test = data_generator.sample(train_size=n_train, test_size=n_test, x_min=-3,
+                                                                 x_max=3)
         x_trains.append(x_train)
         y_trains.append(y_train)
         x_tests.append(x_test)
@@ -62,10 +66,10 @@ def main():
     x_tests = np.array(x_tests)
     y_tests = np.array(y_tests)
 
-    np.save(ptr + dataname + "X_trains.npy", x_trains)
-    np.save(ptr + dataname + "y_trains.npy", y_trains)
-    np.save(ptr + dataname + "X_tests.npy", x_tests)
-    np.save(ptr + dataname + "y_tests.npy", y_tests)
+    np.save(ptr + dataname + "_X_trains.npy", x_trains)
+    np.save(ptr + dataname + "_y_trains.npy", y_trains)
+    np.save(ptr + dataname + "_X_tests.npy", x_tests)
+    np.save(ptr + dataname + "_y_tests.npy", y_tests)
 
 if __name__ == '__main__':
     main()

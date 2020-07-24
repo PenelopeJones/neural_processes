@@ -2,6 +2,9 @@ import numpy as np
 import torch
 import scipy
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.rc('font',family='Arial')
+
 import pdb
 
 from sklearn.metrics import r2_score, mean_squared_error
@@ -82,8 +85,8 @@ def nlpd(pred_mean_vec, pred_var_vec, targets):
     return nlpd
 
 
-def plotter1d(x_train, y_train, x_test, y_test, mu_y, var_y, path_to_save):
-    x_target = np.concatenate((x_train, x_test), axis=0)
+def plotter1d(x_train, y_train, x_test, y_test, x_uniform, mu_y, var_y, path_to_save, plot_test=False):
+    x_target = x_uniform.numpy()
     std2_target = 1.96*np.sqrt(var_y)
     lb = mu_y - std2_target
     ub = mu_y + std2_target
@@ -95,32 +98,44 @@ def plotter1d(x_train, y_train, x_test, y_test, mu_y, var_y, path_to_save):
     ub = np.array(ub).reshape(-1)
 
     plt.figure(figsize = (7, 7))
-    plt.scatter(x_train, y_train, color="red", s=3, marker = "o", label = "Training data: context points")
-    plt.scatter(x_test, y_test, color='blue', s=3, marker='o', label="Test data: targets")
-    plt.plot(x_target, mu_y, color='darkcyan', linewidth=1, label='Mean prediction')
-    plt.plot(x_target, lb, linestyle='-.', marker=None, color='darkcyan', linewidth=0.5)
-    plt.plot(x_target, ub, linestyle='-.', marker=None, color='darkcyan', linewidth=0.5,
+    plt.plot(x_target, mu_y, color='darkcyan', linewidth=2.0, label='Mean prediction')
+    plt.plot(x_target, lb, linestyle='-.', marker=None, color='darkcyan', linewidth=1.0)
+    plt.plot(x_target, ub, linestyle='-.', marker=None, color='darkcyan', linewidth=1.0,
              label='Two standard deviations')
     plt.fill_between(x_target, lb, ub, color='cyan', alpha=0.2)
-    plt.title('Predictive distribution')
-    plt.ylabel('f(x)')
+    if plot_test:
+        plt.scatter(x_test, y_test, color='blue', s=20, marker='s', alpha=0.6, label="Test data")
+        plt.scatter(x_train, y_train, color="red", s=25, marker = "o", alpha=0.9, label = "Training data")
+    else:
+        plt.scatter(x_train, y_train, color="red", s=25, marker="o", alpha=0.9, label="Observed data")
+    plt.ylabel('f(x)', fontsize=24)
     plt.yticks([])
-    plt.ylim(min(np.concatenate((y_train, y_test), axis=0)) - 1, max(np.concatenate((y_train, y_test), axis=0)) + 1)
+    plt.ylim(min(np.concatenate((y_train, y_test), axis=0)) - 1, max(np.concatenate((y_train, y_test), axis=0)) + 1.5)
     plt.xlim(min(x_target), max(x_target))
-    plt.xlabel('x')
+    plt.xlabel('x', fontsize=24)
     plt.xticks([])
-    plt.legend()
+    handlelength = 1.25
+    handletextpad = 0.35
+    loc = 'upper left'
+    bbox_to_anchor = (0.0, 0.48, 0.95, 0.52)
+    labelspacing = 0.4
+    plt.legend(fontsize=16, loc=loc, bbox_to_anchor=bbox_to_anchor,
+              frameon=True, ncol=2, handlelength=handlelength, handletextpad=handletextpad,
+              labelspacing=labelspacing)
     plt.savefig(path_to_save)
 
     return
 
 
 def metrics_calculator(model, model_name, x_trains, y_trains, x_tests, y_tests, dataname, epoch, x_scaler=None, y_scaler=None):
-    directory = 'results/'
+    directory = 'results/' + dataname + '/'
     subdirectory = model_name + '/'
+
 
     n_functions = len(x_trains)
     x_dim = x_trains[0].shape[-1]
+    if x_dim == 1:
+        x_uniform = torch.linspace(-4, 4, 200).reshape(-1, 1)
 
     r2_train_list = []
     rmse_train_list = []
@@ -135,18 +150,34 @@ def metrics_calculator(model, model_name, x_trains, y_trains, x_tests, y_tests, 
         x_test = x_tests[j]
         y_test = y_tests[j]
 
+
         # At prediction time the context points comprise the entire training set.
         if model_name == 'cnp':
             mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, batch_size=1) #[n_train, y_size]
             mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, batch_size=1)  #[n_test, y_size]
+            if (j % (n_functions // 10) == 0) and (x_dim == 1):
+                mu_y_uniform, var_y_uniform = model.forward(x_train, y_train, x_uniform, batch_size=1)
+                mu_y_uniform = mu_y_uniform.reshape(-1).detach().numpy()
+                var_y_uniform = var_y_uniform.reshape(-1).detach().numpy()
         elif model_name == 'vnp':
             mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, nz_samples=10, ny_samples=100, batch_size=1) #[n_train, y_size]
             mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, nz_samples=10, ny_samples=100, batch_size=1)  #[n_test, y_size]
+            if (j % (n_functions // 10) == 0) and (x_dim == 1):
+                mu_y_uniform, var_y_uniform = model.forward(x_train, y_train, x_uniform,
+                                                            nz_samples=10, ny_samples=100, batch_size=1)
+                mu_y_uniform = mu_y_uniform.reshape(-1).detach().numpy()
+                var_y_uniform = var_y_uniform.reshape(-1).detach().numpy()
         elif model_name == 'anp':
             mu_y_train, var_y_train = model.forward(x_train, y_train, x_train, nz_samples=10, ny_samples=100, batch_size=1) #[n_train, y_size]
             mu_y_test, var_y_test = model.forward(x_train, y_train, x_test, nz_samples=10, ny_samples=100, batch_size=1)  #[n_test, y_size]
+            if (j % (n_functions // 10) == 0) and (x_dim == 1):
+                mu_y_uniform, var_y_uniform = model.forward(x_train, y_train, x_uniform, nz_samples=10, ny_samples=100,
+                                                            batch_size=1)
+                mu_y_uniform = mu_y_uniform.reshape(-1).detach().numpy()
+                var_y_uniform = var_y_uniform.reshape(-1).detach().numpy()
         else:
-            raise Exception('Model name should be cnp or vnp.')
+            raise Exception('Model name should be cnp or vnp or anp.')
+
         mu_y_train = mu_y_train.reshape(-1).detach().numpy()
         var_y_train = var_y_train.reshape(-1).detach().numpy()
         mu_y_test = mu_y_test.reshape(-1).detach().numpy()
@@ -159,6 +190,8 @@ def metrics_calculator(model, model_name, x_trains, y_trains, x_tests, y_tests, 
             var_y_train = y_scaler.var_ * var_y_train
             mu_y_test = y_scaler.inverse_transform(mu_y_test)
             var_y_test = y_scaler.var_ * var_y_test
+            mu_y_uniform = y_scaler.inverse_transform(mu_y_uniform)
+            var_y_uniform = y_scaler.var_ * var_y_uniform
             y_train = y_scaler.inverse_transform(y_train)
             y_test = y_scaler.inverse_transform(y_test)
 
@@ -171,17 +204,21 @@ def metrics_calculator(model, model_name, x_trains, y_trains, x_tests, y_tests, 
         nlpd_test_list.append(nlpd(mu_y_test, var_y_test, y_test))
 
 
-        if (j % (n_functions // 10) == 0) and (x_dim == 1):
-            fig_name = dataname + '_f' + str(j) + '_epoch' + str(epoch) + model_name + '.png'
+        if (j % (n_functions // 10) == 0) and (x_dim == 1) and (epoch % 5000 == 0):
+            fig_name = dataname + '_f' + str(j) + '_epoch' + str(epoch) + model_name
 
             if x_scaler is not None:
                 x_train = x_scaler.inverse_transform(x_train.reshape(-1))
                 x_test = x_scaler.inverse_transform(x_test.reshape(-1))
 
-            plotter1d(x_train=x_train, y_train=y_train, x_test=x_test, y_test=y_test,
-                      mu_y=np.concatenate((mu_y_train, mu_y_test), axis=0),
-                      var_y=np.concatenate((var_y_train, var_y_test), axis=0),
-                      path_to_save=directory+subdirectory+fig_name)
+            plotter1d(x_train=x_train, y_train=y_train, x_test=x_test, y_test=y_test, x_uniform=x_uniform,
+                      mu_y=mu_y_uniform,
+                      var_y=var_y_uniform,
+                      path_to_save=directory+subdirectory + fig_name + "no_test.png", plot_test=False)
+            plotter1d(x_train=x_train, y_train=y_train, x_test=x_test, y_test=y_test, x_uniform=x_uniform,
+                      mu_y=mu_y_uniform,
+                      var_y=var_y_uniform,
+                      path_to_save=directory + subdirectory + fig_name + "_test.png", plot_test=True)
 
     r2_train_list = np.array(r2_train_list)
     rmse_train_list = np.array(rmse_train_list)
