@@ -54,22 +54,22 @@ if __name__ == '__main__':
     parser.add_argument('--r_dim', type=int, default=8,
                         help='Dimensionality of context encoding, r.')
     parser.add_argument('--encoder_dims', type=int, nargs='+',
-                        default=[16, 16],
+                        default=[16, 16, 16],
                         help='Dimensions of encoder network.')
     parser.add_argument('--decoder_dims', type=int, nargs='+',
-                        default=[16, 16],
+                        default=[16, 16, 16],
                         help='Dimensions of decoder network.')
     parser.add_argument('--batch_size', type=int, default=32,
                         help='Batch size.')
-    parser.add_argument('--nz_samples', type=int, default=5,
+    parser.add_argument('--nz_samples', type=int, default=8,
                         help='Number of z samples.')
-    parser.add_argument('--ny_samples', type=int, default=50,
+    parser.add_argument('--ny_samples', type=int, default=64,
                         help='Number of y samples for each z sample.')
     parser.add_argument('--epochs', type=int, default=80000,
                         help='Number of training iterations.')
-    parser.add_argument('--print_freq', type=int, default=500,
+    parser.add_argument('--print_freq', type=int, default=200,
                         help='Number of training iterations.')
-    parser.add_argument('--lr', type=float, default=0.001,
+    parser.add_argument('--lr', type=float, default=0.01,
                         help='The training learning rate.')
     parser.add_argument('--VERBOSE', type=bool, default=True,
                         help='Whether to calculate metrics and plot.')

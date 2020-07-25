@@ -109,7 +109,6 @@ class VanillaNP():
             mu_y, var_y, mus_z, vars_z, mus_z_posterior, vars_z_posterior = self.forward(x_context, y_context, x_target, y_target, nz_samples, ny_samples, batch_size) #[batch_size*n_target, y_dim] x2
 
             log_ps = MultivariateNormal(mu_y, torch.diag_embed(var_y)).log_prob(y_target.float())
-            log_ps = log_ps.reshape(batch_size, -1).sum(dim=-1) # batch_size
             log_ps = torch.mean(log_ps)
 
             # Compute the KL divergence between prior and posterior over z
