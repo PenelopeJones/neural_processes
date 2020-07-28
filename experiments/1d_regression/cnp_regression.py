@@ -16,12 +16,14 @@ def main(args):
     """
     warnings.filterwarnings('ignore')
 
-    X_trains = np.load(args.directory + args.dataname + '_X_trains.npy', allow_pickle=True)
-    y_trains = np.load(args.directory + args.dataname + '_y_trains.npy', allow_pickle=True)
-    X_tests = np.load(args.directory + args.dataname + '_X_tests.npy', allow_pickle=True)
-    y_tests = np.load(args.directory + args.dataname + '_y_tests.npy', allow_pickle=True)
+    print('Loading data...')
 
-    n_functions = len(X_trains)
+    directory = args.directory + args.dataname + '/'
+
+    X_trains = np.load(directory + args.dataname + '_X_trains.npy', allow_pickle=True)
+    y_trains = np.load(directory + args.dataname + '_y_trains.npy', allow_pickle=True)
+    X_tests = np.load(directory + args.dataname + '_X_tests.npy', allow_pickle=True)
+    y_tests = np.load(directory + args.dataname + '_y_tests.npy', allow_pickle=True)
 
     # Convert the data for use in PyTorch.
     X_trains = torch_from_numpy_list(X_trains)
@@ -29,7 +31,7 @@ def main(args):
     X_tests = torch_from_numpy_list(X_tests)
     y_tests = torch_from_numpy_list(y_tests)
 
-    print('... building model')
+    print('... building model ...')
 
     cnp = CNP(x_dim=X_trains[0].shape[-1], y_dim=y_trains[0].shape[-1], r_dim=args.r_dim,
               encoder_dims=args.encoder_dims, decoder_dims=args.decoder_dims,
@@ -44,7 +46,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--directory', type=str, default='data/toy_data/1DGP_2SE/')
+    parser.add_argument('--directory', type=str, default='data/toy_data/')
     parser.add_argument('--dataname', type=str, default='1DGP_2SE')
     parser.add_argument('--r_dim', type=int, default=8,
                         help='Dimensionality of context encoding, r.')

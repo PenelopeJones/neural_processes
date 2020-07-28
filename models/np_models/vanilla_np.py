@@ -8,6 +8,8 @@ from torch.distributions.kl import kl_divergence
 from models.networks.networks import ProbabilisticVanillaNN
 from utils.data_utils import metrics_calculator, batch_sampler, to_natural_params, from_natural_params
 
+import pdb
+
 
 class VanillaNP():
     """
@@ -53,14 +55,17 @@ class VanillaNP():
 
         mu_z, var_z = self.encoder.forward(torch.cat((x_context, y_context), dim=-1).float())  # [batch_size*n_context, r_dim]
 
-        if y_target is not None:
-            mu_z_posterior, var_z_posterior = self.encoder.forward(torch.cat((x_target, y_target), dim=-1).float())
-
-        nu1_z, nu2_z = to_natural_params(mu_z, var_z)  #[batch_size*n_context, r_dim]
+        nu1_z, nu2_z = to_natural_params(mu_z, var_z)  # [batch_size*n_context, r_dim]
         nu1_z = torch.sum(nu1_z.view(batch_size, -1, self.r_dim), dim=1).reshape(-1, self.r_dim)
         nu2_z = torch.sum(nu2_z.view(batch_size, -1, self.r_dim), dim=1).reshape(-1, self.r_dim)
+        mu_z, var_z = from_natural_params(nu1_z, nu2_z)  # [batch_size, r_dim]
 
-        mu_z, var_z = from_natural_params(nu1_z, nu2_z)  #[batch_size, r_dim]
+        if y_target is not None:
+            mu_z_posterior, var_z_posterior = self.encoder.forward(torch.cat((x_target, y_target), dim=-1).float())
+            nu1_z_posterior, nu2_z_posterior = to_natural_params(mu_z_posterior, var_z_posterior)  # [batch_size*n_target, r_dim]
+            nu1_z_posterior = torch.sum(nu1_z_posterior.view(batch_size, -1, self.r_dim), dim=1).reshape(-1, self.r_dim)
+            nu2_z_posterior = torch.sum(nu2_z_posterior.view(batch_size, -1, self.r_dim), dim=1).reshape(-1, self.r_dim)
+            mu_z_posterior, var_z_posterior = from_natural_params(nu1_z_posterior, nu2_z_posterior)  # [batch_size, r_dim]
 
         samples_z = [MultivariateNormal(mu_z, torch.diag_embed(var_z)).rsample() for i in range(nz_samples)]
         samples_z = torch.stack(samples_z).transpose(1, 0).view(batch_size, -1, 1, self.r_dim) # [batch_size, nz_samples, 1, r_dim]
@@ -105,16 +110,16 @@ class VanillaNP():
             # Sample the function from the set of functions
             x_context, y_context, x_target, y_target = batch_sampler(x, y, batch_size)
 
-            # Make a forward pass through the CNP to obtain a distribution over the target set.
-            mu_y, var_y, mus_z, vars_z, mus_z_posterior, vars_z_posterior = self.forward(x_context, y_context, x_target, y_target, nz_samples, ny_samples, batch_size) #[batch_size*n_target, y_dim] x2
+            # Make a forward pass through the VNP to obtain a distribution over the target set.
+            mu_y, var_y, mu_z, var_z, mu_z_posterior, var_z_posterior = self.forward(x_context, y_context, x_target, y_target, nz_samples, ny_samples, batch_size) #[batch_size*n_target, y_dim] x2
 
             log_ps = MultivariateNormal(mu_y, torch.diag_embed(var_y)).log_prob(y_target.float())
             log_ps = torch.mean(log_ps)
 
             # Compute the KL divergence between prior and posterior over z
             z_posteriors = [MultivariateNormal(mu, torch.diag_embed(var)) for mu, var in
-                            zip(mus_z_posterior, vars_z_posterior)]
-            z_priors = [MultivariateNormal(mu, torch.diag_embed(var)) for mu, var in zip(mus_z, vars_z)]
+                            zip(mu_z_posterior, var_z_posterior)]
+            z_priors = [MultivariateNormal(mu, torch.diag_embed(var)) for mu, var in zip(mu_z, var_z)]
 
             kl_div = [kl_divergence(z_posterior, z_prior).float() for z_posterior, z_prior
                       in zip(z_posteriors, z_priors)]

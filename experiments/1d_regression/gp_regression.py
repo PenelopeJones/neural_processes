@@ -19,12 +19,14 @@ def main(args):
     """
     warnings.filterwarnings('ignore')
 
-    X_trains = np.load(args.directory + args.dataname + '_X_trains.npy', allow_pickle=True)
-    y_trains = np.load(args.directory + args.dataname + '_y_trains.npy', allow_pickle=True)
-    X_tests = np.load(args.directory + args.dataname + '_X_tests.npy', allow_pickle=True)
-    y_tests = np.load(args.directory + args.dataname + '_y_tests.npy', allow_pickle=True)
+    print('Loading data...')
 
-    n_functions = len(X_trains)
+    directory = args.directory + args.dataname + '/'
+
+    X_trains = np.load(directory + args.dataname + '_X_trains.npy', allow_pickle=True)
+    y_trains = np.load(directory + args.dataname + '_y_trains.npy', allow_pickle=True)
+    X_tests = np.load(directory + args.dataname + '_X_tests.npy', allow_pickle=True)
+    y_tests = np.load(directory + args.dataname + '_y_tests.npy', allow_pickle=True)
 
     # Convert the data for use in PyTorch.
     X_trains = torch_from_numpy_list(X_trains)
@@ -32,18 +34,19 @@ def main(args):
     X_tests = torch_from_numpy_list(X_tests)
     y_tests = torch_from_numpy_list(y_tests)
 
-    print('... building model')
+    print('... building model ...')
 
     likelihood = gpytorch.likelihoods.GaussianLikelihood()
     model = MultiFunctionExactGPModel(train_x=X_trains[0], train_y=y_trains[0].reshape(-1), likelihood=likelihood)
 
+    print('... training ...')
     model.train()
     likelihood.train()
 
     model.train_model(x_trains=X_trains, y_trains=y_trains, lr=args.lr, epochs=args.epochs,
                       print_freq=args.print_freq, batch_size=args.batch_size)
 
-
+    print('... evaluating ...')
     model.eval()
     likelihood.eval()
 
@@ -76,12 +79,12 @@ def main(args):
             plotter1d(x_train=x_train, y_train=y_train, x_test=x_test, y_test=y_test, x_uniform=x_uniform, mu_y=mu_y,
                       var_y=var_y, path_to_save=path_to_save_no_test, plot_test=False)
 
-
+    print('... done.')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--directory', type=str, default='data/toy_data/1DGP_MaternCombo/')
-    parser.add_argument('--dataname', type=str, default='1DGP_MaternCombo')
+    parser.add_argument('--directory', type=str, default='data/toy_data/')
+    parser.add_argument('--dataname', type=str, default='1DGP_2SE')
     parser.add_argument('--batch_size', type=int, default=100,
                         help='Batch size.')
     parser.add_argument('--epochs', type=int, default=500,

@@ -16,12 +16,14 @@ def main(args):
     """
     warnings.filterwarnings('ignore')
 
-    X_trains = np.load(args.directory + args.dataname + '_X_trains.npy', allow_pickle=True)
-    y_trains = np.load(args.directory + args.dataname + '_y_trains.npy', allow_pickle=True)
-    X_tests = np.load(args.directory + args.dataname + '_X_tests.npy', allow_pickle=True)
-    y_tests = np.load(args.directory + args.dataname + '_y_tests.npy', allow_pickle=True)
+    print('Loading data...')
 
-    n_functions = len(X_trains)
+    directory = args.directory + args.dataname + '/'
+
+    X_trains = np.load(directory + args.dataname + '_X_trains.npy', allow_pickle=True)
+    y_trains = np.load(directory + args.dataname + '_y_trains.npy', allow_pickle=True)
+    X_tests = np.load(directory + args.dataname + '_X_tests.npy', allow_pickle=True)
+    y_tests = np.load(directory + args.dataname + '_y_tests.npy', allow_pickle=True)
 
     # Convert the data for use in PyTorch.
     X_trains = torch_from_numpy_list(X_trains)
@@ -29,23 +31,25 @@ def main(args):
     X_tests = torch_from_numpy_list(X_tests)
     y_tests = torch_from_numpy_list(y_tests)
 
-    print('... building model')
+    print('... building model ...')
 
     anp = AttentiveNP(x_dim=X_trains[0].shape[-1], y_dim=y_trains[0].shape[-1], r_dim=args.r_dim,
                       det_encoder_dims=args.det_encoder_dims, prob_encoder_dims=args.prob_encoder_dims,
                       decoder_dims=args.decoder_dims, decoder_non_linearity=F.relu)
 
-    print('... training.')
+    print('... training ...')
 
     anp.train(x=X_trains, y=y_trains, x_test=X_tests, y_test=y_tests, x_scaler=None, y_scaler=None,
               nz_samples=args.nz_samples, ny_samples=args.ny_samples, batch_size=args.batch_size, lr=args.lr,
               epochs=args.epochs, print_freq=args.print_freq, VERBOSE=args.VERBOSE, dataname=args.dataname)
 
+    print('... done.')
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--directory', type=str, default='data/toy_data/1DGP_MaternCombo/')
-    parser.add_argument('--dataname', type=str, default='1DGP_MaternCombo')
+    parser.add_argument('--directory', type=str, default='data/toy_data/')
+    parser.add_argument('--dataname', type=str, default='1DGP_2SE')
     parser.add_argument('--r_dim', type=int, default=8,
                         help='Dimensionality of context encoding, r.')
     parser.add_argument('--det_encoder_dims', type=int, nargs='+',
