@@ -19,17 +19,17 @@ import copy
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.kl import kl_divergence
 from torch.distributions import MultivariateNormal
 
-from models.networks.npfilm_networks import NPFiLM_Encoder, NPFiLM_Decoder
-from models.networks.np_networks import ProbabilisticVanillaNN, MultiProbabilisticVanillaNN
-from utils.metric_utils import mll, confidence_curve, confidence_curve
+from models.networks.np_networks import VanillaNN, MultiProbabilisticVanillaNN
+from utils.metric_utils import mll, confidence_curve
 from sklearn.metrics import r2_score
 
 
-class NPBasic:
+class CNPBasic(nn.Module):
     """
     The Neural Process + FiLM: a model for chemical data imputation.
     """
@@ -47,18 +47,18 @@ class NPBasic:
         :param decoder_hidden_dims: (list of ints) architecture of the decoder NN.
         """
 
+        super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.z_dim = z_dim
         self.d_dim = in_dim - n_properties
         self.n_properties = n_properties
-
-        self.encoder = ProbabilisticVanillaNN(in_dim=self.d_dim+self.n_properties, out_dim=self.z_dim,
-                                              hidden_dims=encoder_dims, restrict_var=False)
+        self.encoder = VanillaNN(in_dim=self.d_dim+self.n_properties, out_dim=self.z_dim,
+                                 hidden_dims=encoder_dims)
         self.decoder = MultiProbabilisticVanillaNN(in_dim=self.z_dim, out_dim=1, n_properties=self.n_properties,
                                                    hidden_dims=decoder_dims, restrict_var=False)
 
-    def train(self, x, epochs, batch_size, file, print_freq=50,
+    def train_model(self, x, epochs, batch_size, file, print_freq=50,
               x_test=None, means=None, stds=None, lr=0.001):
         """
         :param x:
@@ -93,7 +93,6 @@ class NPBasic:
             # Mask of the properties that are missing
             mask_batch = torch.isnan(x_batch[:, -self.n_properties:])
 
-
             # To form the context mask we will add properties to the missing values
             mask_context = copy.deepcopy(mask_batch)
             batch_properties = [torch.where(~mask_batch[i, ...])[0] for i in
@@ -101,25 +100,15 @@ class NPBasic:
 
             for i, properties in enumerate(batch_properties):
                 ps = np.random.choice(properties.numpy(),
-                                      size=np.random.randint(low=0, high=properties.shape[0] + 1),
+                    size = np.random.randint(low=0, high=properties.shape[0] + 1),
                                       replace=False)
 
                 # add property to those being masked
                 mask_context[i, ps] = True
             input_batch = copy.deepcopy(x_batch)
-            input_batch[:, -self.n_properties:][mask_batch] = 0.0
+            input_batch[:, -self.n_properties:][mask_context] = 0.0
 
-            # First use this to compute the posterior distribution over z
-            mu_posts, var_posts = self.encoder(input_batch)
-
-            context_batch = copy.deepcopy(input_batch)
-            # Now set the property values of the context mask to 0 too.
-            context_batch[:, -self.n_properties:][mask_context] = 0.0
-
-            mu_priors, var_priors = self.encoder(context_batch)
-
-            # Sample from the distribution over z.
-            z = mu_priors + torch.randn_like(mu_priors) * var_priors**0.5
+            z = self.encoder(input_batch)
 
             mus_y, vars_y = self.decoder.forward(z, mask_batch)
 
@@ -137,23 +126,12 @@ class NPBasic:
 
             likelihood_term /= torch.sum(~mask_batch)
 
-            # Compute the KL divergence between prior and posterior over z
-            z_posteriors = [MultivariateNormal(mu, torch.diag_embed(var)) for mu, var in
-                                zip(mu_posts, var_posts)]
-            z_priors = [MultivariateNormal(mu, torch.diag_embed(var)) for mu, var in zip(mu_priors, var_priors)]
-            kl_div = [kl_divergence(z_posterior, z_prior).float() for z_posterior, z_prior
-                          in zip(z_posteriors, z_priors)]
-            kl_div = torch.sum(torch.stack(kl_div))
-            kl_div /= torch.sum(~mask_batch)
-
-            loss = kl_div - likelihood_term
+            loss = - likelihood_term
 
             if epoch % print_freq == 0:
-                file.write('\n Epoch {} Loss: {:4.4f} LL: {:4.4f} KL: {:4.4f}'.format(
-                    epoch, loss.item(), likelihood_term.item(),
-                    kl_div.item()))
-
-                r2_scores, mlls = self.metrics_calculator(x, n_samples=100, test=False)
+                file.write('\n Epoch {} Loss: {:4.4f} LL: {:4.4f}'.format(
+                    epoch, loss.item(), likelihood_term.item()))
+                r2_scores, mlls = self.metrics_calculator(x, test=False)
                 r2_scores = np.array(r2_scores)
                 mlls = np.array(mlls)
                 file.write('\n R^2 score (train): {:.3f}+- {:.3f}'.format(
@@ -162,10 +140,8 @@ class NPBasic:
                     np.mean(mlls), np.std(mlls)))
                 file.write(str(r2_scores))
                 file.flush()
-
-
                 if x_test is not None:
-                    r2_scores, mlls = self.metrics_calculator(x_test, n_samples=100, test=True)
+                    r2_scores, mlls = self.metrics_calculator(x_test, test=True)
                     r2_scores = np.array(r2_scores)
                     mlls = np.array(mlls)
                     file.write('\n R^2 score (test): {:.3f}+- {:.3f}'.format(
@@ -173,8 +149,8 @@ class NPBasic:
                     file.write('\n MLL (test): {:.3f}+- {:.3f} \n'.format(
                         np.mean(mlls), np.std(mlls)))
                     file.write(str(r2_scores) + '\n')
-                    file.write(str(mlls) + '\n')
                     file.flush()
+
                     if (self.epoch % 250) == 0 and (self.epoch > 0):
                         path_to_save = self.dir_name + '/' + self.file_start + '_' + str(self.epoch)
                         np.save(path_to_save + 'r2_scores.npy', r2_scores)
@@ -184,7 +160,7 @@ class NPBasic:
 
             optimiser.step()
 
-    def metrics_calculator(self, x, n_samples, test=True):
+    def metrics_calculator(self, x, test=True):
         mask = torch.isnan(x[:, -self.n_properties:])
         r2_scores = []
         mlls = []
@@ -199,19 +175,12 @@ class NPBasic:
 
             mask_p = torch.zeros_like(mask[p_idx, :]).fill_(True)
             mask_p[:, p] = False
-            mu_priors, var_priors = self.encoder(input_p)
+            z = self.encoder(input_p)
+            predict_mean, predict_var = self.decoder.forward(z, mask_p)
 
-            samples = []
-            for i in range(n_samples):
-                z = mu_priors + var_priors ** 0.5 * torch.randn_like(mu_priors)
-                recon_mus, recon_vars = self.decoder.forward(z, mask_p)
-                recon_mu = recon_mus[p].detach().reshape(-1)
-                recon_sigma = (recon_vars[p] ** 0.5).detach().reshape(-1)
-                sample = recon_mu + recon_sigma * torch.randn_like(recon_mu)
-                samples.append(sample)
-            samples = torch.stack(samples)
-            predict_mean = torch.mean(samples, dim=0).detach()
-            predict_std = torch.std(samples, dim=0).detach()
+            predict_mean = predict_mean[p].reshape(-1).detach()
+            predict_std = (predict_var[p]**0.5).reshape(-1).detach()
+
             target = x_p[:, (-self.n_properties + p)]
 
             if (self.means is not None) and (self.stds is not None):
@@ -223,16 +192,13 @@ class NPBasic:
                 r2_scores.append(r2_score(target, predict_mean))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))
 
-                path_to_save = self.dir_name + '/' + self.file_start + '_' + str(p) + '_' + str(self.epoch)
+                path_to_save = self.dir_name + '/' + self.file_start + str(p)
 
                 if (self.epoch % 250) == 0 and (self.epoch > 0):
                     if test:
                         np.save(path_to_save + '_mean.npy', predict_mean)
                         np.save(path_to_save + '_std.npy', predict_std)
                         np.save(path_to_save + '_target.npy', target)
-                        #confidence_curve(predict_mean, predict_std**2, target,
-                                         #filename=path_to_save + '_rmse_conf_curve.png',
-                                         #metric='rmse')
             else:
                 r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.distributions.kl import kl_divergence
 
-from models.networks.networks import AttentiveProbabilisticEncoder, AttentiveDeterministicEncoder, ProbabilisticVanillaNN
+from models.networks.np_networks import AttentiveProbabilisticEncoder, AttentiveDeterministicEncoder, ProbabilisticVanillaNN
 from utils.data_utils import metrics_calculator, batch_sampler
 
 

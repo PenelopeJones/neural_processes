@@ -55,10 +55,11 @@ class VanillaNN(nn.Module):
 class ProbabilisticVanillaNN(nn.Module):
     """
     A `vanilla' NN whose output is the natural parameters of a normal distribution over y (as opposed to a point
-    estimate of y).
+    estimate of y). Variance is fixed.
     """
 
-    def __init__(self, in_dim, out_dim, hidden_dims, non_linearity=F.relu, min_var=0.01, initial_sigma=None):
+    def __init__(self, in_dim, out_dim, hidden_dims, non_linearity=F.relu, min_var=0.01,
+                 initial_sigma=None, restrict_var=True):
         """
         :param in_dim: (int) Dimensionality of the input.
         :param out_dim: (int) Dimensionality of the target for which a distribution is being obtained.
@@ -72,6 +73,7 @@ class ProbabilisticVanillaNN(nn.Module):
         self.out_dim = out_dim
         self.min_var = min_var
         self.network = VanillaNN(in_dim, 2 * out_dim, hidden_dims, non_linearity)
+        self.restrict_var = restrict_var
 
         if initial_sigma is not None:
             self.network.layers[-1].bias.data = torch.cat([
@@ -89,7 +91,10 @@ class ProbabilisticVanillaNN(nn.Module):
 
         out = self.network(x)
         mu = out[:, :self.out_dim]
-        var = self.min_var + (1.0 - self.min_var) * F.softplus(out[:, self.out_dim:])
+        if self.restrict_var:
+            var = self.min_var + (0.1 - self.min_var) * F.sigmoid(out[:, self.out_dim:])
+        else:
+            var = self.min_var + (1.0 - self.min_var) * F.softplus(out[:, self.out_dim:])
 
         return mu, var
 
@@ -98,7 +103,7 @@ class MultiProbabilisticVanillaNN(nn.Module):
 
     """
     def __init__(self, in_dim, out_dim, hidden_dims, n_properties,
-                 non_linearity=F.relu, min_var=0.01):
+                 non_linearity=F.tanh, min_var=0.01, restrict_var=False):
         """
         :param input_size: An integer describing the dimensionality of the input, in this case
                            r_size, (the dimensionality of the embedding r)
@@ -117,12 +122,14 @@ class MultiProbabilisticVanillaNN(nn.Module):
         self.n_properties = n_properties
         self.min_var = min_var
         self.non_linearity = non_linearity
+        self.restrict_var = restrict_var
 
         self.network = nn.ModuleList()
 
         for i in range(self.n_properties):
             self.network.append(ProbabilisticVanillaNN(self.in_dim, self.out_dim,
-                                                       self.hidden_dims))
+                                                       self.hidden_dims, non_linearity=self.non_linearity,
+                                                       min_var=self.min_var, restrict_var=self.restrict_var))
 
     def forward(self, x, mask):
         """

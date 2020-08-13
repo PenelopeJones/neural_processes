@@ -3,7 +3,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 from torch.distributions.multivariate_normal import MultivariateNormal
 
-from models.networks.networks import VanillaNN, ProbabilisticVanillaNN
+from models.networks.np_networks import VanillaNN, ProbabilisticVanillaNN
 from utils.data_utils import metrics_calculator, batch_sampler
 
 

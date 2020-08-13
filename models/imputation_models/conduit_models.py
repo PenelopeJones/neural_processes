@@ -11,7 +11,7 @@ from sklearn.metrics import r2_score
 
 from models.networks.conduit_networks import ConduitSetOfVanillaNNs
 from utils.imputation_utils import conduit_r2_calculator, nlpd
-from utils.metric_utils import mll, rmse_confidence_curve, r2_confidence_curve
+from utils.metric_utils import mll, confidence_curve
 
 
 class SetofConduitModels:
@@ -41,6 +41,7 @@ class SetofConduitModels:
         self.stds = stds
         self.dir_name = os.path.dirname(file.name)
         self.file_start = file.name[len(self.dir_name)+1:-4]
+        self.print_freq = print_freq
 
         mask = torch.isnan(x[:, -self.n_properties:])
 
@@ -56,49 +57,47 @@ class SetofConduitModels:
             self.round = round
             losses = []
             for model in self.models:
-                model.train(input, mask, n_cycles, batch_size, print_freq)
+                model.train(input, mask, self.n_cycles, batch_size, self.print_freq)
                 losses.append(model.losslogger.item())
             losses = np.array(losses)
-            file.write('\n Epoch {} Loss: {:2.2f} +- {:2.2f}'.format(
-                int((round+1) * print_freq), np.mean(losses), np.std(losses)))
-
-            r2_scores, mlls = self.metrics_calculator(x)
+            self.epoch = int((round+1) * print_freq)
+            file.write('\n Epoch {} Loss: {:4.4f} +- {:4.4f}'.format(
+                self.epoch, np.mean(losses), np.std(losses)))
+            r2_scores, mlls = self.metrics_calculator(x, test=False)
             r2_scores = np.array(r2_scores)
             mlls = np.array(mlls)
             file.write('\n R^2 score (train): {:.3f}+- {:.3f}'.format(
                 np.mean(r2_scores), np.std(r2_scores)))
             file.write('\n MLL (train): {:.3f}+- {:.3f} \n'.format(
                 np.mean(mlls), np.std(mlls)))
-            file.write('R2 scores (train): \n')
             file.write(str(r2_scores))
             file.write('\n')
             file.flush()
 
             if x_test is not None:
-                r2_scores, mlls = self.metrics_calculator(x_test)
+                r2_scores, mlls = self.metrics_calculator(x_test, test=True)
                 r2_scores = np.array(r2_scores)
                 mlls = np.array(mlls)
-
                 file.write('\n R^2 score (test): {:.3f}+- {:.3f}'.format(
                     np.mean(r2_scores), np.std(r2_scores)))
                 file.write('\n MLL (test): {:.3f}+- {:.3f} \n'.format(
                     np.mean(mlls), np.std(mlls)))
-
-                file.write('R2 scores (test): \n')
                 file.write(str(r2_scores))
-                file.write('\n MLL (test): \n')
                 file.write(str(mlls))
-
                 file.flush()
+                if (self.epoch % 50) == 0 and (self.epoch > 0):
+                    path_to_save = self.dir_name + '/' + self.file_start + '_' + str(self.epoch)
+                    np.save(path_to_save + '_r2_scores.npy', r2_scores)
+                    np.save(path_to_save + '_mll_scores.npy', mlls)
 
-    def metrics_calculator(self, x, plot=True):
+    def metrics_calculator(self, x, test=True):
         mask = torch.isnan(x[:, -self.n_properties:])
         r2_scores = []
         mlls = []
         input = copy.deepcopy(x)
         input[torch.where(torch.isnan(input))] = 0.0
 
-        for p in range(0, self.n_properties, 2):
+        for p in range(0, self.n_properties, 1):
             p_idx = torch.where(~mask[:, p])[0]
             input_batch = copy.deepcopy(input[p_idx, :])
             input_batch[:, -self.n_properties + p] = 0.0
@@ -122,20 +121,17 @@ class SetofConduitModels:
                 r2_scores.append(r2_score(target, predict_mean))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))
 
-                path_to_save = self.dir_name + '/' + self.file_start + str(p) + str(self.round)
+                path_to_save = self.dir_name + '/' + self.file_start + '_' + str(p)
 
-                np.save(path_to_save + '_mean.npy', predict_mean)
-                np.save(path_to_save + '_std.npy', predict_std)
-                np.save(path_to_save + '_target.npy', target)
+                if (self.epoch % 50) == 0 and (self.epoch > 0):
+                    if test:
+                        np.save(path_to_save + '_mean.npy', predict_mean)
+                        np.save(path_to_save + '_std.npy', predict_std)
+                        np.save(path_to_save + '_target.npy', target)
 
-                if plot:
-                    rmse_confidence_curve(predict_mean, predict_std**2, target,
-                                     filename=path_to_save + '_rmse_conf_curve.png')
-                    r2_confidence_curve(predict_mean, predict_std**2, target,
-                                          filename=path_to_save + '_r2_conf_curve.png')
-
-
-
+                    #confidence_curve(predict_mean, predict_std**2, target,
+                                     #filename=path_to_save + '_rmse_conf_curve.png',
+                                     #metric = 'rmse')
             else:
                 r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))
@@ -180,7 +176,6 @@ class ConduitModel(nn.Module):
         return output
 
     def train(self, x, mask, n_cycles, batch_size, epochs):
-
         for epoch in range(epochs):
             self.optimiser.zero_grad()
             # Randomly select a batch of functions
@@ -194,7 +189,6 @@ class ConduitModel(nn.Module):
             output_batch = self.forward(x_batch, n_cycles=n_cycles)
 
             loss = torch.mean((x_batch[:, -self.n_properties:][~mask_batch]-output_batch[:, -self.n_properties:][~mask_batch])**2)
-
             self.losslogger = loss
 
             # Back-propagate.
@@ -273,6 +267,7 @@ class ConduitModel(nn.Module):
                     file.write('\n R2 scores: \n')
                     file.write(str(r2_scores))
                     file.flush()
+
 
             # Back-propagate.
             loss.backward()
