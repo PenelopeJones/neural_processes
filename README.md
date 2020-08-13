@@ -14,17 +14,23 @@ This repository contains code to train three members of the neural process famil
  - Neural Processes [\[2\]](https://arxiv.org/abs/1807.01622)
  - Attentive Neural Processes [\[3\]](https://arxiv.org/abs/1901.05761)
  
+It also contains code to train the model implemented in [\[4\]](https://pubs.acs.org/doi/full/10.1021/acs.jcim.8b00768?src=recsys),
+and my own, neural process inspired, models for the imputation of chemical data. 
+ 
  
 ## Experiments
 - Regression metalearning task _(1-dimensional toy data)_.
 - Imputation metalearning task _(chemical data)_.
  
 ## Requirements
-This code was implemented using Python 3.7.6 and the following packages:
-- numpy (1.18.3)
-- pandas (1.0.3)
-- torch (1.5.0)
-- torchvision (0.6.0)
+This code was implemented using Python 3.8.5 and the following packages:
+- numpy (1.19.1)
+- pandas (1.1.0)
+- torch (1.6.0)
+- torchvision (0.7.0)
+- scikit-learn (0.23.2)
+- matplotlib (3.3.0)
+- scipy (1.5.2)
 
 ## Contact / Acknowledgements
 If you use this code for your research, please acknowledge the author (Penelope K. Jones, [pj321@cam.ac.uk](mailto:pj321@cam.ac.uk)). 
@@ -37,3 +43,6 @@ Please feel free to contact me if you have any questions about this work.
 
 [\[3\]](https://arxiv.org/abs/1901.05761) Attentive Neural Processes: Hyunjik Kim, Andriy Mnih, Jonathan Schwarz, Marta Garnelo, 
 Ali Eslami, Dan Rosenbaum, Oriol Vinyals, Yee Whye Teh. ICLR 2019.
+
+[\[4\]](https://pubs.acs.org/doi/full/10.1021/acs.jcim.8b00768?src=recsys) Imputation of Assay Bioactivity Data Using Deep Learning:
+T. M. Whitehead, B. W. J. Irwin, P. Hunt, M. D. Segall, and G. J. Conduit. ACS 2019.
