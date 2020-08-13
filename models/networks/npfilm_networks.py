@@ -329,3 +329,7 @@ class NPFiLM_Decoder(nn.Module):
                 var[:, p, :] = self.min_var + (1.0-self.min_var) * F.softplus(x_p[:, self.out_dim:])
 
         return mu, var
+
+
+
+

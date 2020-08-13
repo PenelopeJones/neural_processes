@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch.optim as optim
 
-from models.networks.networks import VanillaNN
+from models.networks.np_networks import VanillaNN
 
 class AutoEncoder(nn.Module):
     """

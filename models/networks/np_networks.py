@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 from models.networks.attention import MultiHeadAttention, dot_product_attention, uniform_attention, laplace_attention
 
-
+import pdb
 # BASIC NETWORKS
 
 class VanillaNN(nn.Module):
@@ -93,6 +93,51 @@ class ProbabilisticVanillaNN(nn.Module):
 
         return mu, var
 
+class MultiProbabilisticVanillaNN(nn.Module):
+    """
+
+    """
+    def __init__(self, in_dim, out_dim, hidden_dims, n_properties,
+                 non_linearity=F.relu, min_var=0.01):
+        """
+        :param input_size: An integer describing the dimensionality of the input, in this case
+                           r_size, (the dimensionality of the embedding r)
+        :param output_size: An integer describing the dimensionality of the output, in this case
+                            output_size = x_size
+        :param decoder_n_hidden: An integer describing the number of hidden layers in the neural
+                                 network
+        :param decoder_hidden_size: An integer describing the number of nodes in each layer of the
+                                    neural network
+        """
+
+        super().__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.hidden_dims = hidden_dims
+        self.n_properties = n_properties
+        self.min_var = min_var
+        self.non_linearity = non_linearity
+
+        self.network = nn.ModuleList()
+
+        for i in range(self.n_properties):
+            self.network.append(ProbabilisticVanillaNN(self.in_dim, self.out_dim,
+                                                       self.hidden_dims))
+
+    def forward(self, x, mask):
+        """
+
+        :param mask: Torch matrix showing which of the
+        :return:
+        """
+        mus_y = []
+        vars_y = []
+        for p in range(self.n_properties):
+            mu_y, var_y = self.network[p].forward(x[~mask[:, p]])
+            mus_y.append(mu_y)
+            vars_y.append(var_y)
+
+        return mus_y, vars_y
 
 
 
