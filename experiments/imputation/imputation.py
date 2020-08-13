@@ -18,7 +18,7 @@ from models.imputation_models.conduit_models import SetofConduitModels
 from models.imputation_models.np_basic import NPBasic
 from models.imputation_models.np_film import NPFiLM
 from utils.data_utils import nan_transform_data, select_descriptors, parse_boolean
-from utils.imputation_utils import baseline_metrics_calculator
+#from utils.imputation_utils import baseline_metrics_calculator
 
 #from npfilm import NPFiLM
 #from npfilm2 import NPFiLM2
@@ -312,7 +312,6 @@ if __name__ == '__main__':
     parser.add_argument('--use_latent_mean', default='t',
                         help='Whether to use the latent mean values for all '
                              'but the final cycle.')
-
     args = parser.parse_args()
 
     main(args)

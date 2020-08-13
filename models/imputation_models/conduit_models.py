@@ -1,4 +1,5 @@
 import copy
+import os
 import pdb
 
 import numpy as np
@@ -9,7 +10,8 @@ import torch.nn.functional as F
 from sklearn.metrics import r2_score
 
 from models.networks.conduit_networks import ConduitSetOfVanillaNNs
-from utils.imputation_utils import conduit_r2_calculator, nlpd, mll
+from utils.imputation_utils import conduit_r2_calculator, nlpd
+from utils.metric_utils import mll, rmse_confidence_curve, r2_confidence_curve
 
 
 class SetofConduitModels:
@@ -37,6 +39,8 @@ class SetofConduitModels:
         self.n_cycles = n_cycles
         self.means = means
         self.stds = stds
+        self.dir_name = os.path.dirname(file.name)
+        self.file_start = file.name[len(self.dir_name)+1:-4]
 
         mask = torch.isnan(x[:, -self.n_properties:])
 
@@ -46,7 +50,10 @@ class SetofConduitModels:
 
         rounds = total_epochs // print_freq
 
+        self.round = 0
+
         for round in range(rounds):
+            self.round = round
             losses = []
             for model in self.models:
                 model.train(input, mask, n_cycles, batch_size, print_freq)
@@ -84,14 +91,14 @@ class SetofConduitModels:
 
                 file.flush()
 
-    def metrics_calculator(self, x):
+    def metrics_calculator(self, x, plot=True):
         mask = torch.isnan(x[:, -self.n_properties:])
         r2_scores = []
         mlls = []
         input = copy.deepcopy(x)
         input[torch.where(torch.isnan(input))] = 0.0
 
-        for p in range(0, self.n_properties):
+        for p in range(0, self.n_properties, 2):
             p_idx = torch.where(~mask[:, p])[0]
             input_batch = copy.deepcopy(input[p_idx, :])
             input_batch[:, -self.n_properties + p] = 0.0
@@ -114,6 +121,21 @@ class SetofConduitModels:
                           self.means[-self.n_properties + p])
                 r2_scores.append(r2_score(target, predict_mean))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))
+
+                path_to_save = self.dir_name + '/' + self.file_start + str(p) + str(self.round)
+
+                np.save(path_to_save + '_mean.npy', predict_mean)
+                np.save(path_to_save + '_std.npy', predict_std)
+                np.save(path_to_save + '_target.npy', target)
+
+                if plot:
+                    rmse_confidence_curve(predict_mean, predict_std**2, target,
+                                     filename=path_to_save + '_rmse_conf_curve.png')
+                    r2_confidence_curve(predict_mean, predict_std**2, target,
+                                          filename=path_to_save + '_r2_conf_curve.png')
+
+
+
             else:
                 r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))
@@ -155,7 +177,6 @@ class ConduitModel(nn.Module):
         for cycle in range(n_cycles):
             output = self.network(input)
             input = 0.5 * (input + output)
-
         return output
 
     def train(self, x, mask, n_cycles, batch_size, epochs):
