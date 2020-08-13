@@ -9,6 +9,70 @@ import pdb
 
 from sklearn.metrics import r2_score, mean_squared_error
 
+def select_descriptors(x, x_test, means, stds, n_properties, n_descriptors):
+    n_descriptors_old = x.shape[1] - n_properties
+    coeffs = np.zeros((n_descriptors_old, n_properties))
+    for d in range(n_descriptors_old):
+        xd = x[:, d]
+        for q in range(n_properties):
+            xq = x[:, -n_properties + q]
+            ids = np.where(np.isfinite(xd) & np.isfinite(xq))
+            ids = np.array(ids).reshape(-1)
+            if np.std(xd[ids]) > 1.0e-9:
+                coeffs[d, q] = pearsonr(xd[ids], xq[ids])[0]
+            else:
+                coeffs[d, q] = 0.0
+    coeff_means = np.mean(np.abs(coeffs), axis=1)
+    idx = np.flip(np.argsort(coeff_means))[0:n_descriptors]
+
+    xd = x[:, idx]
+    xp = x[:, -n_properties:]
+
+    xd_test = x_test[:, idx]
+    xp_test = x_test[:, -n_properties:]
+
+    d_means = means[idx]
+    p_means = means[-n_properties:]
+
+    d_stds = stds[idx]
+    p_stds = stds[-n_properties:]
+
+    x_new = np.concatenate((xd, xp), axis=1)
+    x_test_new = np.concatenate((xd_test, xp_test), axis=1)
+    means_new = np.concatenate((d_means, p_means), axis=0)
+    stds_new = np.concatenate((d_stds, p_stds), axis=0)
+    return x_new, x_test_new, means_new, stds_new
+
+def nan_transform_data(x_train, x_test):
+    """
+    Standardise data which has nan values. Return the standardised data and the
+    means and standard deviations used to standardise.
+
+    :param x_train: input train data
+    :param x_test: input test data
+    :return: x_train_scaled, x_test_scaled, means, stds
+    """
+    stds = np.nanstd(x_train, axis=0)
+    x_train = x_train[:, np.where(stds > 1.0e-11)].reshape(x_train.shape[0], -1)
+    x_test = x_test[:, np.where(stds > 1.0e-11)].reshape(x_test.shape[0], -1)
+    means = np.nanmean(x_train, axis=0)
+    stds = np.nanstd(x_train, axis=0)
+
+    x_train_scaled = (x_train - means) / stds
+    x_test_scaled = (x_test - means) / stds
+
+    return x_train_scaled, x_test_scaled, means, stds
+
+def parse_boolean(b):
+    if len(b) < 1:
+        raise ValueError('Cannot parse empty string into boolean.')
+    b = b[0].lower()
+    if b == 't' or b == 'y' or b == '1':
+        return True
+    if b == 'f' or b == 'n' or b == '0':
+        return False
+    raise ValueError('Cannot parse string into boolean.')
+
 def torch_from_numpy_list(x_list):
     x_torch = []
     for i in range(len(x_list)):
@@ -204,7 +268,7 @@ def metrics_calculator(model, model_name, x_trains, y_trains, x_tests, y_tests, 
         nlpd_test_list.append(nlpd(mu_y_test, var_y_test, y_test))
 
 
-        if (j % (n_functions // 10) == 0) and (x_dim == 1) and (epoch % 5000 == 0):
+        if (j % (n_functions // 10) == 0) and (x_dim == 1) and (epoch % 20000 == 0):
             fig_name = dataname + '_f' + str(j) + '_epoch' + str(epoch) + model_name
 
             if x_scaler is not None:
