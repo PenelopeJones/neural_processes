@@ -133,7 +133,7 @@ class CNPBasic(nn.Module):
                 file.flush()
 
                 if x_test is not None:
-                    r2_scores, mlls = self.metrics_calculator(x_test, test=True)
+                    r2_scores, mlls, rmses = self.metrics_calculator(x_test, test=True)
                     r2_scores = np.array(r2_scores)
                     mlls = np.array(mlls)
                     rmses = np.array(rmses)
