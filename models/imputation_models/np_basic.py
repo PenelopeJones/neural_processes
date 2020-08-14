@@ -20,10 +20,11 @@ import torch
 import torch.optim as optim
 from torch.distributions.kl import kl_divergence
 from torch.distributions import MultivariateNormal
+from sklearn.metrics import r2_score, mean_squared_error
 
 from models.networks.np_networks import ProbabilisticVanillaNN, MultiProbabilisticVanillaNN
 from utils.metric_utils import mll
-from sklearn.metrics import r2_score, mean_squared_error
+
 
 
 class NPBasic:
@@ -145,7 +146,7 @@ class NPBasic:
 
             loss = kl_div - likelihood_term
 
-            if epoch % print_freq == 0:
+            if (epoch % print_freq == 0) and (epoch > 0):
                 file.write('\n Epoch {} Loss: {:4.4f} LL: {:4.4f} KL: {:4.4f}'.format(
                     epoch, loss.item(), likelihood_term.item(),
                     kl_div.item()))
@@ -154,13 +155,13 @@ class NPBasic:
                 r2_scores = np.array(r2_scores)
                 mlls = np.array(mlls)
                 rmses = np.array(rmses)
+
                 file.write('\n R^2 score (train): {:.3f}+- {:.3f}'.format(
                     np.mean(r2_scores), np.std(r2_scores)))
                 file.write('\n MLL (train): {:.3f}+- {:.3f} \n'.format(
                     np.mean(mlls), np.std(mlls)))
                 file.write('\n RMSE (train): {:.3f}+- {:.3f} \n'.format(
                     np.mean(rmses), np.std(rmses)))
-                #file.write(str(r2_scores))
                 file.flush()
 
                 if x_test is not None:
@@ -174,14 +175,13 @@ class NPBasic:
                         np.mean(mlls), np.std(mlls)))
                     file.write('\n RMSE (test): {:.3f}+- {:.3f} \n'.format(
                         np.mean(rmses), np.std(rmses)))
-                    #file.write(str(r2_scores) + '\n')
-                    #file.write(str(mlls) + '\n')
+
                     file.flush()
                     if (self.epoch % 1000) == 0 and (self.epoch > 0):
                         path_to_save = self.dir_name + '/' + self.file_start + '_' + str(self.epoch)
                         np.save(path_to_save + 'r2_scores.npy', r2_scores)
                         np.save(path_to_save + 'mll_scores.npy', mlls)
-                        np.save(path_to_save + 'rmse_scores.npy', mlls)
+                        np.save(path_to_save + 'rmse_scores.npy', rmses)
 
             loss.backward()
 
@@ -228,18 +228,16 @@ class NPBasic:
                 mlls.append(mll(predict_mean, predict_std ** 2, target))
                 rmses.append(np.sqrt(mean_squared_error(target, predict_mean)))
 
-                path_to_save = self.dir_name + '/' + self.file_start + '_' + str(p) + '_' + str(self.epoch)
+                path_to_save = self.dir_name + '/' + self.file_start + '_' + str(p)
 
-                ##if (self.epoch % 250) == 0 and (self.epoch > 0):
-                    #if test:
-                        #np.save(path_to_save + '_mean.npy', predict_mean)
-                        #np.save(path_to_save + '_std.npy', predict_std)
-                        #np.save(path_to_save + '_target.npy', target)
-                        #confidence_curve(predict_mean, predict_std**2, target,
-                                         #filename=path_to_save + '_rmse_conf_curve.png',
-                                         #metric='rmse')
+                if (self.epoch % 2000) == 0 and (self.epoch > 0):
+                    if test:
+                        np.save(path_to_save + '_mean.npy', predict_mean)
+                        np.save(path_to_save + '_std.npy', predict_std)
+                        np.save(path_to_save + '_target.npy', target)
+
             else:
                 r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))
-                rmses.append(np.sqrt(mean_squared_error(target, predict_mean)))
+                rmses.append(np.sqrt(mean_squared_error(target.numpy(), predict_mean.numpy())))
         return r2_scores, mlls, rmses

@@ -1,19 +1,6 @@
 """
-In this model: the descriptor vector and each property has their own latent encoder.
-Each latent encoder is a linear neural network with a FiLM layer as the final layer, allowing
-for conditioning the output on the property we are trying to predict.
-The output of each latent encoder is a distribution over either z_d or z_pi (i.e. means and covariances);
-the distribution over property latent variable z_p is formed by summing the natural parameters of the
-distributions over each z_pi. The overall function latent variable z is the concatenation of z_d and z_p.
-z is then the input to the decoder, which is also a linear NN with FiLM layers that allow for conditioning
-on the property that we are trying to predict. The output is again a distribution over y_i
-(mean and variance).
-
-NB Here, no skip connections.
-
+Conditional Neural Process inspired imputation model.
 """
-
-import pdb
 import os
 import copy
 
@@ -21,12 +8,12 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.distributions.kl import kl_divergence
-from torch.distributions import MultivariateNormal
+from sklearn.metrics import r2_score, mean_squared_error
 
 from models.networks.np_networks import VanillaNN, MultiProbabilisticVanillaNN
-from utils.metric_utils import mll, confidence_curve
-from sklearn.metrics import r2_score
+from utils.metric_utils import mll
+
+import pdb
 
 
 class CNPBasic(nn.Module):
@@ -128,33 +115,42 @@ class CNPBasic(nn.Module):
 
             loss = - likelihood_term
 
-            if epoch % print_freq == 0:
+            if (epoch % print_freq == 0) and (epoch > 0):
                 file.write('\n Epoch {} Loss: {:4.4f} LL: {:4.4f}'.format(
                     epoch, loss.item(), likelihood_term.item()))
-                r2_scores, mlls = self.metrics_calculator(x, test=False)
+
+                r2_scores, mlls, rmses = self.metrics_calculator(x, test=False)
                 r2_scores = np.array(r2_scores)
                 mlls = np.array(mlls)
+                rmses = np.array(rmses)
+
                 file.write('\n R^2 score (train): {:.3f}+- {:.3f}'.format(
                     np.mean(r2_scores), np.std(r2_scores)))
                 file.write('\n MLL (train): {:.3f}+- {:.3f} \n'.format(
                     np.mean(mlls), np.std(mlls)))
-                #file.write(str(r2_scores))
+                file.write('\n RMSE (train): {:.3f}+- {:.3f} \n'.format(
+                    np.mean(rmses), np.std(rmses)))
                 file.flush()
+
                 if x_test is not None:
                     r2_scores, mlls = self.metrics_calculator(x_test, test=True)
                     r2_scores = np.array(r2_scores)
                     mlls = np.array(mlls)
+                    rmses = np.array(rmses)
+
                     file.write('\n R^2 score (test): {:.3f}+- {:.3f}'.format(
                         np.mean(r2_scores), np.std(r2_scores)))
                     file.write('\n MLL (test): {:.3f}+- {:.3f} \n'.format(
                         np.mean(mlls), np.std(mlls)))
-                    #file.write(str(r2_scores) + '\n')
+                    file.write('\n RMSE (test): {:.3f}+- {:.3f} \n'.format(
+                        np.mean(rmses), np.std(rmses)))
                     file.flush()
 
-                    if (self.epoch % 250) == 0 and (self.epoch > 0):
+                    if (self.epoch % 2000) == 0 and (self.epoch > 0):
                         path_to_save = self.dir_name + '/' + self.file_start + '_' + str(self.epoch)
                         np.save(path_to_save + 'r2_scores.npy', r2_scores)
                         np.save(path_to_save + 'mll_scores.npy', mlls)
+                        np.save(path_to_save + 'rmse_scores.npy', rmses)
 
             loss.backward()
 
@@ -164,6 +160,7 @@ class CNPBasic(nn.Module):
         mask = torch.isnan(x[:, -self.n_properties:])
         r2_scores = []
         mlls = []
+        rmses = []
 
         for p in range(0, self.n_properties, 1):
             p_idx = torch.where(~mask[:, p])[0]
@@ -191,18 +188,18 @@ class CNPBasic(nn.Module):
                           self.means[-self.n_properties + p])
                 r2_scores.append(r2_score(target, predict_mean))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))
+                rmses.append(np.sqrt(mean_squared_error(target, predict_mean)))
 
                 path_to_save = self.dir_name + '/' + self.file_start + str(p)
 
-                """
-                                if (self.epoch % 250) == 0 and (self.epoch > 0):
+                if (self.epoch % 2000) == 0 and (self.epoch > 0):
                     if test:
                         np.save(path_to_save + '_mean.npy', predict_mean)
                         np.save(path_to_save + '_std.npy', predict_std)
                         np.save(path_to_save + '_target.npy', target)
-                """
 
             else:
                 r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))
-        return r2_scores, mlls
+                rmses.append(np.sqrt(mean_squared_error(target.numpy(), predict_mean.numpy())))
+        return r2_scores, mlls, rmses
