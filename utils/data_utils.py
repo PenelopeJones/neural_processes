@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 mpl.rc('font',family='Arial')
 
+from scipy.stats import pearsonr
+
 import pdb
 
 from sklearn.metrics import r2_score, mean_squared_error

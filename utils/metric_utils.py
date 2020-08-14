@@ -1,5 +1,6 @@
 import copy
 import numpy as np
+import torch
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -50,8 +51,9 @@ def mll(mean, variance, target):
     ll = - 0.5 * np.log(2 * np.pi * variance) - 0.5 * (mean - target) ** 2 / variance
     return ll.mean()
 
-def r2_confidence_curve(mean, variance, target, filename, figsize=(8, 8),
-                     linewidth=3.0, fontsize=24):
+
+def confidence_curve(mean, variance, target, filename, metric='rmse', figsize=(8, 8),
+                     linewidth=3.0, fontsize=24, means=None, stds=None):
     """
     Plot confidence curve.
     :param mean:
@@ -63,43 +65,48 @@ def r2_confidence_curve(mean, variance, target, filename, figsize=(8, 8),
     assert len(mean) == len(variance)
     assert len(mean) == len(target)
 
+    if metric == 'rmse':
+        n_min = 5
+    elif metric == 'r2':
+        n_min = 20
+
     # Actual error
     errors = np.absolute(mean-target)
 
-    R2 = np.zeros(len(target)-5)
-    R2_oracle = np.zeros(len(target) - 5)
-    conf_percentile = np.linspace(100, 0, len(target)-5)
+    metric_model = np.zeros(len(target)-n_min)
+    metric_oracle = np.zeros(len(target) - n_min)
+    conf_percentile = np.linspace(100, 100*n_min/(len(target)), len(target)-n_min)
 
-    mean_conf = copy.deepcopy(mean)
+    mean_model = copy.deepcopy(mean)
     mean_oracle = copy.deepcopy(mean)
-    target_conf = copy.deepcopy(target)
+    target_model = copy.deepcopy(target)
     target_oracle = copy.deepcopy(target)
 
-    for i in range(len(mean) - 5):
+    for i in range(len(mean) - n_min):
         # Order values according to level of uncertainty
-        idx = variance.argmax()
+        idx_model = variance.argmax()
+        idx_oracle = errors.argmax()
 
-        # Remove the least confident prediction
-        target_conf = np.delete(target_conf, idx)
-        mean_conf = np.delete(mean_conf, idx)
-        variance = np.delete(variance, idx)
+        # Compute the metric using our predictions, using only the X% most confident prediction.
+        # The metric should systematically go down (RMSE) or up (R2) as X decreases.
+        if metric == 'rmse':
+            metric_model[i] = np.sqrt(mean_squared_error(target_model, mean_model))
+            metric_oracle[i] = np.sqrt(mean_squared_error(target_oracle, mean_oracle))
+        elif metric == 'r2':
+            metric_model[i] = r2_score(target_model, mean_model)
+            metric_oracle[i] = r2_score(target_oracle, mean_oracle)
+        else:
+            raise Exception('Metric should be rmse or r2.')
 
-        # Compute the RMSE using our predictions, using only the X% most confident prediction.
-        # The RMSE should go down as X decreases
-        R2[i] = r2_score(target_conf, mean_conf)
+        # Remove least confident prediction of model
+        target_model = np.delete(target_model, idx_model)
+        mean_model = np.delete(mean_model, idx_model)
+        variance = np.delete(variance, idx_model)
 
-        # Compute the curve for the oracle, which correctly orders the predictions in order
-        # of confidence.
-        idx = errors.argmax()
-
-        # Remove least confident prediction
-        target_oracle = np.delete(target_oracle, idx)
-        mean_oracle = np.delete(mean_oracle, idx)
-        errors = np.delete(errors, idx)
-
-        # Compute the RMSE using our predictions, using only the X% most confident prediction.
-        # The RMSE should go down as X decreases.
-        R2_oracle[i] = r2_score(target_oracle, mean_oracle)
+        # Remove least confident prediction of oracle
+        target_oracle = np.delete(target_oracle, idx_oracle)
+        mean_oracle = np.delete(mean_oracle, idx_oracle)
+        errors = np.delete(errors, idx_oracle)
 
     fig, ax = plt.subplots(figsize=figsize)
     for axis in ['bottom', 'left']:
@@ -107,94 +114,56 @@ def r2_confidence_curve(mean, variance, target, filename, figsize=(8, 8),
     for axis in ['top', 'right']:
         ax.spines[axis].set_visible(False)
 
-    ax.plot(conf_percentile, R2_oracle, color="C0", linestyle=linestyles['densely dashed'],
+    ax.plot(conf_percentile, metric_oracle, color="C0", linestyle=linestyles['densely dashed'],
             linewidth=linewidth, label = "Oracle")
-    ax.plot(conf_percentile, R2, color="C1", linestyle=linestyles['densely dotted'],
+    ax.plot(conf_percentile, metric_model, color="C1", linestyle=linestyles['densely dotted'],
             linewidth=linewidth, label="Model")
 
-    ax.set_xlabel("Percentage missing data imputed", fontsize=fontsize)
-    ax.set_ylabel("R2 score", fontsize=fontsize)
+    ymin = min(np.min(metric_oracle), np.min(metric_model))
+    ymax = max(np.max(metric_oracle), np.max(metric_model))
 
-    ax.legend(loc='lower left', fontsize=fontsize)
+    ax.set_ylim(ymin, ymax)
+
+    yticks = np.arange(np.round(ymin, decimals=1), np.round(ymax+0.2, decimals=1), step=0.2)
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(np.round(yticks, decimals=1), fontsize=fontsize)
+
+    xticks = np.linspace(0, 100, 6)
+    ax.set_xlim(0, 100)
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(np.round(xticks, decimals=0), fontsize=fontsize)
+    ax.legend(fontsize=fontsize)
+
+    ax.set_xlabel("Percentage missing data imputed", fontsize=fontsize)
+    if metric == 'rmse':
+        ax.set_ylabel("RMSE", fontsize=fontsize)
+    elif metric == 'r2':
+        ax.set_ylabel("R2 score", fontsize=fontsize)
+
     plt.savefig(filename, frameon=False, dpi=400)
 
 
+def baseline_metrics_calculator(x, n_properties, means=None, stds=None):
+    mask = torch.isnan(x[:, -n_properties:])
+    r2_scores = []
+    mlls = []
+    for p in range(0, n_properties, 1):
+        p_idx = torch.where(~mask[:, p])[0]
+        predict_mean = torch.zeros(len(p_idx))
+        predict_std = torch.ones(len(p_idx))
+        target = x[p_idx][:, (-n_properties + p)]
 
-def rmse_confidence_curve(mean, variance, target, filename, figsize=(8, 8),
-                     linewidth=3.0, fontsize=24):
-    """
-    Plot confidence curve.
-    :param mean:
-    :param variance:
-    :param target:
-    :param filename:
-    :return:
-    """
-    assert len(mean) == len(variance)
-    assert len(mean) == len(target)
+        if (means is not None) and (stds is not None):
+            predict_mean = (predict_mean.numpy() * stds[-n_properties + p] +
+                            means[-n_properties + p])
+            predict_std = predict_std.numpy() * stds[-n_properties + p]
+            target = (target.numpy() * stds[-n_properties + p] +
+                      means[-n_properties + p])
+            r2_scores.append(r2_score(target, predict_mean))
+            mlls.append(mll(predict_mean, predict_std ** 2, target))
+        else:
+            r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
+            mlls.append(mll(predict_mean, predict_std ** 2, target))
 
-    # Actual error
-    errors = np.absolute(mean-target)
-
-    RMSE = np.zeros(len(target)-5)
-    RMSE_oracle = np.zeros(len(target) - 5)
-    conf_percentile = np.linspace(100, 0, len(target)-5)
-
-    mean_conf = copy.deepcopy(mean)
-    mean_oracle = copy.deepcopy(mean)
-    target_conf = copy.deepcopy(target)
-    target_oracle = copy.deepcopy(target)
-
-    for i in range(len(mean) - 5):
-        # Order values according to level of uncertainty
-        idx = variance.argmax()
-
-        # Remove the least confident prediction
-        target_conf = np.delete(target_conf, idx)
-        mean_conf = np.delete(mean_conf, idx)
-        variance = np.delete(variance, idx)
-
-        # Compute the RMSE using our predictions, using only the X% most confident prediction.
-        # The RMSE should go down as X decreases.
-        RMSE[i] = np.sqrt(mean_squared_error(target_conf, mean_conf))
-
-        # Compute the curve for the oracle, which correctly orders the predictions in order
-        # of confidence.
-        idx = errors.argmax()
-
-        # Remove least confident prediction
-        target_oracle = np.delete(target_oracle, idx)
-        mean_oracle = np.delete(mean_oracle, idx)
-        errors = np.delete(errors, idx)
-
-        # Compute the RMSE using our predictions, using only the X% most confident prediction.
-        # The RMSE should go down as X decreases.
-        RMSE_oracle[i] = np.sqrt(mean_squared_error(target_oracle, mean_oracle))
-
-    fig, ax = plt.subplots(figsize=figsize)
-    for axis in ['bottom', 'left']:
-        ax.spines[axis].set_linewidth(linewidth)
-    for axis in ['top', 'right']:
-        ax.spines[axis].set_visible(False)
-
-    ax.plot(conf_percentile, RMSE_oracle, color="C0", linestyle=linestyles['densely dashed'],
-            linewidth=linewidth, label = "Oracle")
-    ax.plot(conf_percentile, RMSE, color="C1", linestyle=linestyles['densely dotted'],
-            linewidth=linewidth, label="Model")
-
-    ax.set_xlabel("Percentage missing data imputed", fontsize=fontsize)
-    ax.set_ylabel("RMSE", fontsize=fontsize)
-
-    ax.legend(loc='lower left', fontsize=fontsize)
-    plt.savefig(filename, frameon=False, dpi=400)
-
-    #ax.set_xticks(xticks)
-    #ax.set_xticklabels(xticks, fontsize=fontsize)
-
-
-
-
-
-
-
+    return r2_scores, mlls
 

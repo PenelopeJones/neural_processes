@@ -6,34 +6,12 @@ import torch
 import scipy
 from scipy.stats import pearsonr
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-from utils.metric_utils import mll, rmse_confidence_curve, r2_confidence_curve
+from utils.metric_utils import mll, confidence_curve
 import time
 import pdb
 
 
-def baseline_metrics_calculator(x, n_properties, means=None, stds=None):
-    mask = torch.isnan(x[:, -n_properties:])
-    r2_scores = []
-    mlls = []
-    for p in range(0, n_properties, 1):
-        p_idx = torch.where(~mask[:, p])[0]
-        predict_mean = torch.zeros(len(p_idx))
-        predict_std = torch.ones(len(p_idx))
-        target = x[p_idx][:, (-n_properties + p)]
 
-        if (means is not None) and (stds is not None):
-            predict_mean = (predict_mean.numpy() * stds[-n_properties + p] +
-                            means[-n_properties + p])
-            predict_std = predict_std.numpy() * stds[-n_properties + p]
-            target = (target.numpy() * stds[-n_properties + p] +
-                      means[-n_properties + p])
-            r2_scores.append(r2_score(target, predict_mean))
-            mlls.append(mll(predict_mean, predict_std ** 2, target))
-        else:
-            r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
-            mlls.append(mll(predict_mean, predict_std ** 2, target))
-
-    return r2_scores, mlls
 
 
 def nlpd(pred_mean_vec, pred_var_vec, targets):
@@ -87,101 +65,3 @@ def conduit_r2_calculator(model, x, n_properties, means, stds, n_cycles):
                 r2_scores.append(r2_score(target_batch.data.numpy(), output_batch.data.numpy()))
 
     return r2_scores
-
-
-def npfilm_metrics_calculator(model, x, n_properties, num_samples=1,
-                              means=None, stds=None):
-    mask = torch.isnan(x[:, -n_properties:])
-    r2_scores = []
-    nlpds = []
-    for p in range(0, n_properties, 1):
-        p_idx = torch.where(~mask[:, p])[0]
-        if p_idx.shape[0] > 40:
-            x_p = x[p_idx]
-            target = x_p[:, (-n_properties + p)]
-
-            mask_context = copy.deepcopy(mask[p_idx, :])
-            mask_context[:, p] = True
-            mask_p = torch.zeros_like(mask_context).fill_(True)
-            mask_p[:, p] = False
-
-            # [test_size, n_properties, z_dim]
-            mu_priors, sigma_priors = model.encoder(x_p[:, :-n_properties],
-                                                    x_p[:, -n_properties:],
-                                                    mask_context)
-
-            samples = []
-            for i in range(num_samples):
-                z = mu_priors + sigma_priors * torch.randn_like(mu_priors)
-                recon_mu, recon_sigma = model.decoder(z, mask_p)
-                recon_mu = recon_mu.detach()
-                recon_sigma = recon_sigma.detach()
-                recon_mu = recon_mu[:, p]
-                recon_sigma = recon_sigma[:, p]
-                sample = recon_mu + recon_sigma * torch.randn_like(recon_mu)
-                samples.append(sample.transpose(0, 1))
-
-            samples = torch.cat(samples)
-            predict_mean = torch.mean(samples, dim=0)
-            predict_std = torch.std(samples, dim=0)
-
-            if (means is not None) and (stds is not None):
-                predict_mean = (predict_mean.numpy() * stds[-n_properties + p] +
-                                means[-n_properties + p])
-                predict_std = predict_std.numpy() * stds[-n_properties + p]
-                target = (target.numpy() * stds[-n_properties + p] +
-                          means[-n_properties + p])
-                r2_scores.append(r2_score(target, predict_mean))
-                nlpds.append(nlpd(predict_mean, predict_std ** 2, target))
-            else:
-                r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
-                nlpds.append(nlpd(predict_mean, predict_std ** 2, target))
-
-    return r2_scores, nlpds
-
-
-def npbasic_metrics_calculator(model, x, n_properties, num_samples=1,
-                               means=None, stds=None):
-    mask = torch.isnan(x[:, -n_properties:])
-
-
-    r2_scores = []
-    nlpds = []
-    for p in range(0, n_properties, 1):
-        p_idx = torch.where(~mask[:, p])[0]
-        if p_idx.shape[0] > 40:
-            x_p = x[p_idx]
-
-            input_p = copy.deepcopy(x_p)
-            input_p[:, -n_properties:][mask[p_idx]] = 0.0
-            input_p[:, (-n_properties + p)] = 0.0
-            mask_p = torch.zeros_like(mask[p_idx, :]).fill_(True)
-            mask_p[:, p] = False
-            mu_priors, var_priors = model.encoder(input_p)
-
-            samples = []
-            for i in range(num_samples):
-                z = mu_priors + var_priors ** 0.5 * torch.randn_like(mu_priors)
-                recon_mus, recon_vars = model.decoder.forward(z, mask_p)
-                recon_mu = recon_mus[p].detach().reshape(-1)
-                recon_sigma = (recon_vars[p] ** 0.5).detach().reshape(-1)
-                sample = recon_mu + recon_sigma * torch.randn_like(recon_mu)
-                samples.append(sample)
-            samples = torch.stack(samples)
-            predict_mean = torch.mean(samples, dim=0)
-            predict_std = torch.std(samples, dim=0)
-            target = x_p[:, (-n_properties + p)]
-
-            if (means is not None) and (stds is not None):
-                predict_mean = (predict_mean.numpy() * stds[-n_properties + p] +
-                                means[-n_properties + p])
-                predict_std = predict_std.numpy() * stds[-n_properties + p]
-                target = (target.numpy() * stds[-n_properties + p] +
-                          means[-n_properties + p])
-                r2_scores.append(r2_score(target, predict_mean))
-                nlpds.append(nlpd(predict_mean, predict_std ** 2, target))
-            else:
-                r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
-                nlpds.append(nlpd(predict_mean, predict_std ** 2, target))
-
-    return r2_scores, nlpds

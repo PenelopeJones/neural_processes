@@ -138,7 +138,7 @@ class CNPBasic(nn.Module):
                     np.mean(r2_scores), np.std(r2_scores)))
                 file.write('\n MLL (train): {:.3f}+- {:.3f} \n'.format(
                     np.mean(mlls), np.std(mlls)))
-                file.write(str(r2_scores))
+                #file.write(str(r2_scores))
                 file.flush()
                 if x_test is not None:
                     r2_scores, mlls = self.metrics_calculator(x_test, test=True)
@@ -148,7 +148,7 @@ class CNPBasic(nn.Module):
                         np.mean(r2_scores), np.std(r2_scores)))
                     file.write('\n MLL (test): {:.3f}+- {:.3f} \n'.format(
                         np.mean(mlls), np.std(mlls)))
-                    file.write(str(r2_scores) + '\n')
+                    #file.write(str(r2_scores) + '\n')
                     file.flush()
 
                     if (self.epoch % 250) == 0 and (self.epoch > 0):
@@ -194,11 +194,14 @@ class CNPBasic(nn.Module):
 
                 path_to_save = self.dir_name + '/' + self.file_start + str(p)
 
-                if (self.epoch % 250) == 0 and (self.epoch > 0):
+                """
+                                if (self.epoch % 250) == 0 and (self.epoch > 0):
                     if test:
                         np.save(path_to_save + '_mean.npy', predict_mean)
                         np.save(path_to_save + '_std.npy', predict_std)
                         np.save(path_to_save + '_target.npy', target)
+                """
+
             else:
                 r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
                 mlls.append(mll(predict_mean, predict_std ** 2, target))

@@ -14,6 +14,7 @@ NB Here, no skip connections.
 """
 
 import pdb
+import os
 import copy
 
 import numpy as np
@@ -21,10 +22,12 @@ import torch
 import torch.optim as optim
 from torch.distributions.kl import kl_divergence
 from torch.distributions import MultivariateNormal
+from sklearn.metrics import r2_score
 
 from models.networks.npfilm_networks import NPFiLM_Encoder, NPFiLM_Decoder
 from models.networks.npfilm_networks import ProbabilisticNN_MultiFiLM
-from utils.imputation_utils import npfilm_metrics_calculator
+from utils.metric_utils import mll, confidence_curve
+
 
 
 class NPFiLM:
@@ -65,7 +68,13 @@ class NPFiLM:
         optimiser = optim.Adam(list(self.encoder.parameters()) +
                                list(self.decoder.parameters()), lr)
 
+        self.means = means
+        self.stds = stds
+        self.dir_name = os.path.dirname(file.name)
+        self.file_start = file.name[len(self.dir_name) + 1:-4]
+
         for epoch in range(epochs):
+            self.epoch = epoch
             optimiser.zero_grad()
 
             batch_idx = torch.randperm(x.shape[0])[:batch_size]
@@ -126,40 +135,94 @@ class NPFiLM:
             loss = (- likelihood_term + kl_term)
 
             if epoch % print_freq == 0:
-
                 file.write('\n Epoch {} Loss: {:4.4f} LL: {:4.4f} KL: {:4.4f}'.format(
                     epoch, loss.item(), likelihood_term.item(),
                     kl_term.item()))
 
-                r2_scores, nlpds = npfilm_metrics_calculator(self, x,
-                                                      self.n_properties,
-                                                      num_samples=25,
-                                                      means=means,
-                                                      stds=stds)
+                r2_scores, mlls = self.metrics_calculator(x, n_samples=100, plot=False)
                 r2_scores = np.array(r2_scores)
-                nlpds = np.array(nlpds)
+                mlls = np.array(mlls)
                 file.write('\n R^2 score (train): {:.3f}+- {:.3f}'.format(
                     np.mean(r2_scores), np.std(r2_scores)))
-                file.write('\n NLPD (train): {:.3f}+- {:.3f} \n'.format(
-                    np.mean(nlpds), np.std(nlpds)))
+                file.write('\n MLL (train): {:.3f}+- {:.3f} \n'.format(
+                    np.mean(mlls), np.std(mlls)))
 
                 file.write(str(r2_scores))
                 file.flush()
 
                 if x_test is not None:
-                    r2_scores, nlpds = npfilm_metrics_calculator(self, x_test,
-                                                          self.n_properties,
-                                                          num_samples=50,
-                                                          means=means,
-                                                          stds=stds)
+                    r2_scores, mlls = self.metrics_calculator(x_test, n_samples=100, plot=True)
                     r2_scores = np.array(r2_scores)
-                    nlpds = np.array(nlpds)
+                    mlls = np.array(mlls)
                     file.write('\n R^2 score (test): {:.3f}+- {:.3f}'.format(
                         np.mean(r2_scores), np.std(r2_scores)))
-                    file.write('\n NLPD (test): {:.3f}+- {:.3f} \n'.format(
-                        np.mean(nlpds), np.std(nlpds)))
+                    file.write('\n MLL (test): {:.3f}+- {:.3f} \n'.format(
+                        np.mean(mlls), np.std(mlls)))
                     file.write(str(r2_scores) + '\n')
                     file.flush()
 
             loss.backward()
             optimiser.step()
+
+    def metrics_calculator(self, x, n_samples=1, plot=True):
+        mask = torch.isnan(x[:, -self.n_properties:])
+        r2_scores = []
+        mlls = []
+        for p in range(0, self.n_properties, 1):
+            p_idx = torch.where(~mask[:, p])[0]
+            if p_idx.shape[0] > 40:
+                x_p = x[p_idx]
+                target = x_p[:, (-self.n_properties + p)]
+
+                mask_context = copy.deepcopy(mask[p_idx, :])
+                mask_context[:, p] = True
+                mask_p = torch.zeros_like(mask_context).fill_(True)
+                mask_p[:, p] = False
+
+                # [test_size, n_properties, z_dim]
+                mu_priors, sigma_priors = self.encoder(x_p[:, :-self.n_properties],
+                                                        x_p[:, -self.n_properties:],
+                                                        mask_context)
+                samples = []
+                for i in range(n_samples):
+                    z = mu_priors + sigma_priors * torch.randn_like(mu_priors)
+                    recon_mu, recon_sigma = self.decoder(z, mask_p)
+                    recon_mu = recon_mu.detach()
+                    recon_sigma = recon_sigma.detach()
+                    recon_mu = recon_mu[:, p]
+                    recon_sigma = recon_sigma[:, p]
+                    sample = recon_mu + recon_sigma * torch.randn_like(recon_mu)
+                    samples.append(sample.transpose(0, 1))
+
+                samples = torch.cat(samples)
+                predict_mean = torch.mean(samples, dim=0)
+                predict_std = torch.std(samples, dim=0)
+
+                if (self.means is not None) and (self.stds is not None):
+                    predict_mean = (predict_mean.numpy() * self.stds[-self.n_properties + p] +
+                                    self.means[-self.n_properties + p])
+                    predict_std = predict_std.numpy() * self.stds[-self.n_properties + p]
+                    target = (target.numpy() * self.stds[-self.n_properties + p] +
+                              self.means[-self.n_properties + p])
+                    r2_scores.append(r2_score(target, predict_mean))
+                    mlls.append(mll(predict_mean, predict_std ** 2, target))
+
+                    path_to_save = self.dir_name + '/' + self.file_start + str(p)
+
+                    np.save(path_to_save + '_mean.npy', predict_mean)
+                    np.save(path_to_save + '_std.npy', predict_std)
+                    np.save(path_to_save + '_target.npy', target)
+
+                    if plot:
+                        confidence_curve(predict_mean, predict_std**2, target,
+                                         filename=path_to_save + '_rmse_conf_curve.png',
+                                         metric='rmse')
+                        confidence_curve(predict_mean, predict_std**2, target,
+                                         filename=path_to_save + '_r2_conf_curve.png',
+                                         metric='r2')
+
+                else:
+                    r2_scores.append(r2_score(target.numpy(), predict_mean.numpy()))
+                    mlls.append(mll(predict_mean, predict_std ** 2, target))
+
+        return r2_scores, mlls

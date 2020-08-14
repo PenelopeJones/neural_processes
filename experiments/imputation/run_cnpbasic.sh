@@ -1,9 +1,12 @@
 #! /bin/bash
-print_freq=25
-epochs=251
+print_freq=100
+epochs=10001
 model_name=npbasic
+n_properties=159
+dataname=Kinase
 
-for run_number in 2 3 4 5 6 7 8 9; do
-  python imputation.py --model_name ${model_name} --print_freq ${print_freq} \
-  --run_number ${run_number} --epochs ${epochs}
+
+for run_number in 0; do
+  python imputation.py --model_name ${model_name} --dataname ${dataname} --n_properties ${n_properties} \
+  --print_freq ${print_freq} --run_number ${run_number} --epochs ${epochs}
 done

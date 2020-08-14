@@ -160,7 +160,7 @@ class NPBasic:
                     np.mean(r2_scores), np.std(r2_scores)))
                 file.write('\n MLL (train): {:.3f}+- {:.3f} \n'.format(
                     np.mean(mlls), np.std(mlls)))
-                file.write(str(r2_scores))
+                #file.write(str(r2_scores))
                 file.flush()
 
 
@@ -172,8 +172,8 @@ class NPBasic:
                         np.mean(r2_scores), np.std(r2_scores)))
                     file.write('\n MLL (test): {:.3f}+- {:.3f} \n'.format(
                         np.mean(mlls), np.std(mlls)))
-                    file.write(str(r2_scores) + '\n')
-                    file.write(str(mlls) + '\n')
+                    #file.write(str(r2_scores) + '\n')
+                    #file.write(str(mlls) + '\n')
                     file.flush()
                     if (self.epoch % 250) == 0 and (self.epoch > 0):
                         path_to_save = self.dir_name + '/' + self.file_start + '_' + str(self.epoch)
@@ -189,7 +189,7 @@ class NPBasic:
         r2_scores = []
         mlls = []
 
-        for p in range(0, self.n_properties, 1):
+        for p in range(0, self.n_properties, 5):
             p_idx = torch.where(~mask[:, p])[0]
             x_p = x[p_idx]
 
