@@ -45,20 +45,24 @@ def main(args):
     with open('results/{}/summary/{}.txt'.format(args.dataname, filename), 'w+') as f:
         r2_scores_list = []
         mlls_list = []
+        rmses_list = []
         for i in range(run_number):
             filestart = '{}{}_{}_{}_{}'.format(args.dataname, args.num, args.model_name, i, epochs)
             r2_scores = np.load('results/{}/{}/{}{}r2_scores.npy'.format(args.dataname, args.model_name, extra_dir, filestart))
             mll_scores = np.load('results/{}/{}/{}{}mll_scores.npy'.format(args.dataname, args.model_name, extra_dir, filestart))
-            f.write(str(r2_scores) + '\n')
-            f.write(str(mll_scores) + '\n')
+            rmse_scores = np.load('results/{}/{}/{}{}rmse_scores.npy'.format(args.dataname, args.model_name, extra_dir, filestart))
+            #f.write(str(r2_scores) + '\n')
+            #f.write(str(mll_scores) + '\n')
             r2_scores_list.append(np.mean(r2_scores))
             mlls_list.append(np.mean(mll_scores))
+            rmses_list.append(np.mean(rmse_scores))
 
         r2_scores_list = np.array(r2_scores_list)
         mlls_list = np.array(mlls_list)
+        rmses_list = np.array(rmses_list)
         f.write('\n R^2 score: {:.4f}+- {:.4f}'.format(np.mean(r2_scores_list), np.std(r2_scores_list)))
         f.write('\n MLL: {:.4f}+- {:.4f} \n'.format(np.mean(mlls_list), np.std(mlls_list)))
-
+        f.write('\n RMSE: {:.4f}+- {:.4f} \n'.format(np.mean(rmses_list), np.std(rmses_list)))
 
 
 
