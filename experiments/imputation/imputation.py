@@ -19,6 +19,8 @@ from models.imputation_models.cnp_basic import CNPBasic
 from models.imputation_models.np_film import NPFiLM
 from utils.data_utils import nan_transform_data, select_descriptors, parse_boolean
 from utils.metric_utils import baseline_metrics_calculator
+from sklearn.decomposition import PCA
+
 
 import pdb
 
@@ -41,6 +43,7 @@ def main(args):
             f.write('\n Number of descriptors = ' + str(args.n_descriptors))
         else:
             f.write('\n Using all descriptors.')
+        f.write('\n Number of PCA components (0 if no PCA used) = ' + str(args.pca_components) + '\n')
 
         f.write('\n Model architecture:')
         f.write('\n Model name = ' + args.model_name)
@@ -85,6 +88,21 @@ def main(args):
         x_test = np.load(args.directory + args.dataname + '_x' + str(args.num) +
                          '_test_dscrpt.npy')
 
+        if args.pca_components > 0:
+            temp = x[:, (-args.n_properties):]
+            temp_test = x_test[:, (-args.n_properties):]
+
+            pca = PCA(n_components=args.pca_components)
+            x_d = pca.fit_transform(x[:, :(-args.n_properties)])
+            x_test_d = pca.transform(x_test[:, :(-args.n_properties)])
+
+            x = np.concatenate((x_d, temp), axis=1)
+            x_test = np.concatenate((x_test_d, temp_test), axis=1)
+
+            f.write('\n Using PCA. Explained variance ratio: {}'.format(
+                pca.explained_variance_ratio_))
+
+
         # Transform the data: standardise to zero mean and unit variance
         x, x_test, means, stds = nan_transform_data(x, x_test)
 
@@ -97,23 +115,29 @@ def main(args):
         if args.model_name == 'baseline':
             f.write('\n ... predictions from baseline model.')
 
-            r2_scores, mlls = baseline_metrics_calculator(x, n_properties=args.n_properties,
+            r2_scores, mlls, rmses = baseline_metrics_calculator(x, n_properties=args.n_properties,
                                                            means=means, stds=stds)
             r2_scores = np.array(r2_scores)
             mlls = np.array(mlls)
+            rmses = np.array(rmses)
             f.write('\n R^2 score (train): {:.3f}+- {:.3f}'.format(
                 np.mean(r2_scores), np.std(r2_scores)))
             f.write('\n MLL (train): {:.3f}+- {:.3f} \n'.format(
                 np.mean(mlls), np.std(mlls)))
+            f.write('\n RMSE (train): {:.3f}+- {:.3f} \n'.format(
+                np.mean(rmses), np.std(rmses)))
             #f.write(str(r2_scores))
-            r2_scores, mlls = baseline_metrics_calculator(x_test, n_properties=args.n_properties,
+            r2_scores, mlls, rmses = baseline_metrics_calculator(x_test, n_properties=args.n_properties,
                                                            means=means, stds=stds)
             r2_scores = np.array(r2_scores)
             mlls = np.array(mlls)
+            rmses = np.array(rmses)
             f.write('\n R^2 score (test): {:.3f}+- {:.3f}'.format(
                 np.mean(r2_scores), np.std(r2_scores)))
             f.write('\n MLL (test): {:.3f}+- {:.3f} \n'.format(
                 np.mean(mlls), np.std(mlls)))
+            f.write('\n RMSE (test): {:.3f}+- {:.3f} \n'.format(
+                np.mean(rmses), np.std(rmses)))
 
             f.write('\n R2 scores: \n')
             f.write(str(r2_scores))
@@ -205,6 +229,8 @@ if __name__ == '__main__':
                         help='Number of training iterations.')
     parser.add_argument('--n_descriptors', type=int, default=0,
                         help='The number of desired descriptors.')
+    parser.add_argument('--pca_components', type=int, default=0,
+                        help='The number of pca components.')
     parser.add_argument('--batch_size', type=int, default=100,
                         help='Number of function samples per iteration.')
     parser.add_argument('--z_dim', type=int, default=16,
