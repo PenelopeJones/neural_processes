@@ -146,7 +146,7 @@ class CNPBasic(nn.Module):
                         np.mean(rmses), np.std(rmses)))
                     file.flush()
 
-                    if (self.epoch % 2000) == 0 and (self.epoch > 0):
+                    if (self.epoch % 500) == 0 and (self.epoch > 0):
                         path_to_save = self.dir_name + '/' + self.file_start + '_' + str(self.epoch)
                         np.save(path_to_save + 'r2_scores.npy', r2_scores)
                         np.save(path_to_save + 'mll_scores.npy', mlls)
@@ -192,7 +192,7 @@ class CNPBasic(nn.Module):
 
                 path_to_save = self.dir_name + '/' + self.file_start + str(p)
 
-                if (self.epoch % 2000) == 0 and (self.epoch > 0):
+                if (self.epoch % 500) == 0 and (self.epoch > 0):
                     if test:
                         np.save(path_to_save + '_mean.npy', predict_mean)
                         np.save(path_to_save + '_std.npy', predict_std)
