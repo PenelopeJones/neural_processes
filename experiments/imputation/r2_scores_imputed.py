@@ -21,13 +21,10 @@ from models.imputation_models.np_basic import NPBasic
 from models.imputation_models.cnp_basic import CNPBasic
 from models.imputation_models.np_film import NPFiLM
 from utils.data_utils import nan_transform_data, select_descriptors, parse_boolean
-from utils.metric_utils import metric_ordering, confidence_curve
+from utils.metric_utils import metric_ordering, confidence_curve, find_nearest
 
 
-def find_nearest(array, value):
-    array = np.asarray(array)
-    idx = (np.abs(array - value)).argmin()
-    return idx
+
 
 
 def main():
@@ -45,8 +42,8 @@ def main():
 
     dataname = 'Adrenergic'
     n_properties = 5
-    model_name = 'setofconduits'
-    metric = 'rmse'
+    model_name = 'cnpbasic'
+    metric = 'r2'
 
     if model_name == 'npbasic':
         ptf = 'results/{}/{}/not_restrict_var/{}1_{}_'.format(dataname, model_name, dataname, model_name)
@@ -96,6 +93,11 @@ def main():
     metric_oracle_mns = np.array(metric_oracle_mns)
     metric_oracle_mn = np.mean(metric_oracle_mns, axis=0)
     metric_oracle_std = np.std(metric_oracle_mns, axis=0)
+
+    print(metric_model_mn)
+    print(metric_model_std)
+
+    pdb.set_trace()
 
     confidence_curve(percentiles, metric_model_mn, metric_oracle_mn, pts,
                      metric_model_std, metric_oracle_std, metric)

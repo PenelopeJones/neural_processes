@@ -33,6 +33,10 @@ linestyles = OrderedDict(
      ('dashdotdotted', (0, (3, 5, 1, 5, 1, 5))),
      ('densely dashdotdotted', (0, (3, 1, 1, 1, 1, 1)))])
 
+def find_nearest(array, value):
+    array = np.asarray(array)
+    idx = (np.abs(array - value)).argmin()
+    return idx
 
 def mll(mean, variance, target):
     """
@@ -141,7 +145,9 @@ def confidence_curve(conf_percentile, metric_model, metric_oracle, filename,
 
     ax.set_ylim(ymin, ymax)
 
-    yticks = np.arange(np.round(ymin, decimals=1), np.round(ymax + 0.2, decimals=1), step=0.2)
+    yticks = [0.0, 0.2, 0.4, 0.6, 0.8]
+
+    #yticks = np.arange(np.round(ymin, decimals=1), np.round(ymax + 0.2, decimals=1), step=0.2)
     ax.set_yticks(yticks)
     ax.set_yticklabels(np.round(yticks, decimals=1), fontsize=fontsize)
 

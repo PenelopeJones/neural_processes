@@ -193,7 +193,7 @@ class NPBasic:
         mlls = []
         rmses = []
 
-        for p in range(0, self.n_properties, 5):
+        for p in range(0, self.n_properties, 1):
             p_idx = torch.where(~mask[:, p])[0]
             x_p = x[p_idx]
 
